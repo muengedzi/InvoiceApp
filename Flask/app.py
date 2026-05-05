@@ -1,0 +1,646 @@
+# ============================================
+# FIX WEASYPRINT DLL ISSUE - MUST BE FIRST!
+# ============================================
+import os
+import sys
+
+# Add MSYS2 DLL directory BEFORE any other imports
+dll_path = r"C:\msys64\mingw64\bin"
+
+# Method 1: Use os.add_dll_directory (Python 3.8+)
+if hasattr(os, 'add_dll_directory') and os.path.exists(dll_path):
+    try:
+        os.add_dll_directory(dll_path)
+        print(f"[OK] Added DLL path: {dll_path}")
+    except Exception as e:
+        print(f"[WARNING] Could not add DLL path: {e}")
+
+# Method 2: Set environment variable for this process
+os.environ['WEASYPRINT_DLL_DIRECTORIES'] = dll_path
+
+# Method 3: Add to PATH for current process
+os.environ['PATH'] = dll_path + ';' + os.environ.get('PATH', '')
+
+# Verify critical DLL exists
+gobject_dll = os.path.join(dll_path, "libgobject-2.0-0.dll")
+if os.path.exists(gobject_dll):
+    print(f"[OK] Found gobject DLL at: {gobject_dll}")
+else:
+    print(f"[WARNING] gobject DLL not found at {gobject_dll}")
+    print(f"[INFO] If MSYS2 is not working, install GTK3 Runtime instead:")
+    print(f"       https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer/releases")
+
+# ============================================
+# INVOICEAPP - FLASK BACKEND
+# Database: InvoiceApp (SQL Server)
+# ============================================
+
+import re
+import bcrypt
+import secrets
+import smtplib
+import json
+from datetime import datetime, timedelta
+from functools import wraps
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
+# Import WeasyPrint AFTER DLL configuration
+try:
+    from weasyprint import HTML
+    from weasyprint.text.fonts import FontConfiguration
+    WEASYPRINT_AVAILABLE = True
+    print("[OK] WeasyPrint imported successfully")
+except Exception as e:
+    print(f"[WARNING] WeasyPrint import failed: {e}")
+    print("[INFO] PDF generation will be disabled")
+    WEASYPRINT_AVAILABLE = False
+    # Create mock HTML class to prevent crashes
+    class MockHTML:
+        def __init__(self, *args, **kwargs):
+            pass
+        def write_pdf(self, *args, **kwargs):
+            raise Exception("WeasyPrint not properly installed. Please install GTK3 Runtime from: https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer/releases")
+    HTML = MockHTML
+
+from flask import (
+    Flask, request, jsonify, render_template, 
+    redirect, url_for, session, make_response
+)
+from flask_login import (
+    LoginManager, login_user, logout_user, login_required, 
+    UserMixin, current_user
+)
+from flask_cors import CORS
+import pyodbc
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# ============================================
+# APP CONFIGURATION
+# ============================================
+app = Flask(__name__)
+app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-change-this')
+CORS(app, supports_credentials=True)
+
+# Database Connection
+DB_CONFIG = {
+    'driver': '{ODBC Driver 17 for SQL Server}',
+    'server': os.getenv('DB_SERVER', 'localhost\\SQLEXPRESS'),
+    'database': 'InvoiceApp',
+    'trusted_connection': 'yes'
+}
+
+def get_db_connection():
+    """Get database connection"""
+    conn_str = (
+        f"Driver={DB_CONFIG['driver']};"
+        f"Server={DB_CONFIG['server']};"
+        f"Database={DB_CONFIG['database']};"
+        f"Trusted_Connection={DB_CONFIG['trusted_connection']};"
+    )
+    return pyodbc.connect(conn_str)
+
+# Email Configuration
+SMTP_SERVER = "smtp.gmail.com"
+SMTP_PORT = 587
+EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
+
+# ============================================
+# FLASK-LOGIN SETUP
+# ============================================
+login_manager = LoginManager()
+login_manager.login_view = "login"
+login_manager.init_app(app)
+
+class User(UserMixin):
+    def __init__(self, id, email, full_name, role):
+        self.id = id
+        self.email = email
+        self.full_name = full_name
+        self.role = role
+
+@login_manager.user_loader
+def load_user(user_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, email, full_name, role FROM users WHERE id = ? AND is_active = 1", (user_id,))
+    user = cursor.fetchone()
+    conn.close()
+    
+    if user:
+        return User(user[0], user[1], user[2], user[3])
+    return None
+
+# ============================================
+# DECORATORS
+# ============================================
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated or current_user.role != 'admin':
+            return jsonify({"error": "Admin access required"}), 403
+        return f(*args, **kwargs)
+    return decorated_function
+
+# ============================================
+# AUTHENTICATION ROUTES
+# ============================================
+
+@app.route('/api/register', methods=['POST'])
+def register():
+    """Register a new user"""
+    data = request.get_json()
+    
+    full_name = data.get('full_name', '').strip()
+    email = data.get('email', '').strip().lower()
+    password = data.get('password', '')
+    business_name = data.get('business_name', '').strip()
+    
+    # Validation
+    if not full_name or not email or not password:
+        return jsonify({"error": "All fields are required"}), 400
+    
+    if len(password) < 8:
+        return jsonify({"error": "Password must be at least 8 characters"}), 400
+    
+    # Hash password
+    password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    
+    # Generate verification token
+    verification_token = secrets.token_urlsafe(32)
+    verification_expiry = datetime.now() + timedelta(hours=24)
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("""
+            INSERT INTO users (full_name, email, password_hash, business_name, 
+                             email_verification_token, email_verification_expiry, 
+                             created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())
+        """, (full_name, email, password_hash, business_name, verification_token, verification_expiry))
+        
+        conn.commit()
+        
+        # Send verification email
+        send_verification_email(email, full_name, verification_token)
+        
+        return jsonify({
+            "success": True,
+            "message": "Registration successful. Please check your email for verification."
+        }), 201
+        
+    except pyodbc.IntegrityError:
+        return jsonify({"error": "Email already exists"}), 409
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/login', methods=['POST'])
+def login():
+    """Login user and return session token"""
+    data = request.get_json()
+    email = data.get('email', '').strip().lower()
+    password = data.get('password', '')
+    
+    if not email or not password:
+        return jsonify({"error": "Email and password required"}), 400
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT id, email, full_name, password_hash, role, email_verified, is_active 
+        FROM users WHERE email = ?
+    """, (email,))
+    
+    user = cursor.fetchone()
+    conn.close()
+    
+    if not user:
+        return jsonify({"error": "Invalid credentials"}), 401
+    
+    user_id, user_email, full_name, password_hash, role, email_verified, is_active = user
+    
+    if not is_active:
+        return jsonify({"error": "Account is deactivated"}), 401
+    
+    if not email_verified:
+        return jsonify({"error": "Please verify your email before logging in"}), 401
+    
+    if not bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8')):
+        return jsonify({"error": "Invalid credentials"}), 401
+    
+    # Create Flask-Login session
+    login_user(User(user_id, user_email, full_name, role))
+    
+    return jsonify({
+        "success": True,
+        "user": {
+            "id": user_id,
+            "email": user_email,
+            "full_name": full_name,
+            "role": role
+        }
+    }), 200
+
+@app.route('/api/logout', methods=['POST'])
+@login_required
+def logout():
+    """Logout user"""
+    logout_user()
+    return jsonify({"success": True}), 200
+
+@app.route('/api/verify-email', methods=['POST'])
+def verify_email():
+    """Verify user email with token"""
+    data = request.get_json()
+    token = data.get('token')
+    
+    if not token:
+        return jsonify({"error": "Token required"}), 400
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT id, email_verification_expiry 
+        FROM users 
+        WHERE email_verification_token = ? AND email_verified = 0
+    """, (token,))
+    
+    user = cursor.fetchone()
+    
+    if not user:
+        conn.close()
+        return jsonify({"error": "Invalid or already used token"}), 400
+    
+    user_id, expiry = user
+    
+    if expiry and expiry < datetime.now():
+        conn.close()
+        return jsonify({"error": "Verification link has expired"}), 400
+    
+    cursor.execute("""
+        UPDATE users 
+        SET email_verified = 1, is_active = 1,
+            email_verification_token = NULL, email_verification_expiry = NULL
+        WHERE id = ?
+    """, (user_id,))
+    
+    conn.commit()
+    conn.close()
+    
+    return jsonify({"success": True, "message": "Email verified successfully"}), 200
+
+def send_verification_email(to_email, to_name, token):
+    """Send verification email"""
+    try:
+        # Use your computer's IP address for mobile
+        verification_link = f"http://10.0.0.150:5000/verify-email-page?token={token}"
+        
+        # Also add a deep link for the app
+        app_link = f"invoiceapp://verify?token={token}"
+        
+        subject = "Verify Your Email - InvoiceApp"
+        
+        html_content = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif;">
+            <h2>Welcome to InvoiceApp, {to_name}!</h2>
+            <p>Please verify your email address by clicking one of the links below:</p>
+            
+            <p><b>Option 1 - Open in App (Recommended for mobile):</b></p>
+            <p><a href="{app_link}" style="background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Verify in App</a></p>
+            
+            <p><b>Option 2 - Open in Browser:</b></p>
+            <p><a href="{verification_link}">Click here to verify in browser</a></p>
+            
+            <p>This link expires in 24 hours.</p>
+            <p>If you didn't create an account with InvoiceApp, please ignore this email.</p>
+            
+            <hr>
+            <p style="font-size: 12px; color: #666;">InvoiceApp - Invoice Management System</p>
+        </body>
+        </html>
+        """
+        
+        msg = MIMEMultipart('alternative')
+        msg["From"] = EMAIL_ADDRESS
+        msg["To"] = to_email
+        msg["Subject"] = subject
+        msg.attach(MIMEText(html_content, "html"))
+        
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()
+            server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+            server.sendmail(EMAIL_ADDRESS, to_email, msg.as_string())
+        
+        print(f"✅ Verification email sent to {to_email}")
+        return True
+    except Exception as e:
+        print(f"Email error: {e}")
+        return False
+
+# ============================================
+# CUSTOMER MANAGEMENT
+# ============================================
+
+@app.route('/api/customers', methods=['GET'])
+@login_required
+def get_customers():
+    """Get all customers for the logged-in user"""
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    search = request.args.get('search', '')
+    
+    offset = (page - 1) * per_page
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Build query with search
+    query = """
+        SELECT id, customer_name, email, phone, address, city, country, 
+               created_at, updated_at
+        FROM customers 
+        WHERE user_id = ?
+    """
+    params = [current_user.id]
+    
+    if search:
+        query += " AND (customer_name LIKE ? OR email LIKE ? OR phone LIKE ?)"
+        search_pattern = f"%{search}%"
+        params.extend([search_pattern, search_pattern, search_pattern])
+    
+    # Get total count
+    count_query = query.replace(
+        "SELECT id, customer_name, email, phone, address, city, country, created_at, updated_at",
+        "SELECT COUNT(*)"
+    )
+    cursor.execute(count_query, params)
+    total = cursor.fetchone()[0]
+    
+    # Get paginated results
+    query += " ORDER BY customer_name OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
+    params.extend([offset, per_page])
+    
+    cursor.execute(query, params)
+    
+    customers = []
+    for row in cursor.fetchall():
+        customers.append({
+            "id": row[0],
+            "customer_name": row[1],
+            "email": row[2],
+            "phone": row[3],
+            "address": row[4],
+            "city": row[5],
+            "country": row[6],
+            "created_at": row[7].isoformat() if row[7] else None,
+            "updated_at": row[8].isoformat() if row[8] else None
+        })
+    
+    conn.close()
+    
+    return jsonify({
+        "customers": customers,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": (total + per_page - 1) // per_page
+    }), 200
+
+@app.route('/api/customers', methods=['POST'])
+@login_required
+def create_customer():
+    """Create a new customer"""
+    data = request.get_json()
+    
+    required_fields = ['customer_name', 'email']
+    for field in required_fields:
+        if not data.get(field):
+            return jsonify({"error": f"{field} is required"}), 400
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("""
+            INSERT INTO customers (user_id, customer_name, email, phone, address, 
+                                 city, state, postal_code, country, tax_exempt, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            current_user.id,
+            data['customer_name'],
+            data['email'],
+            data.get('phone', ''),
+            data.get('address', ''),
+            data.get('city', ''),
+            data.get('state', ''),
+            data.get('postal_code', ''),
+            data.get('country', 'USA'),
+            1 if data.get('tax_exempt') else 0,
+            data.get('notes', '')
+        ))
+        
+        conn.commit()
+        customer_id = cursor.execute("SELECT @@IDENTITY").fetchone()[0]
+        
+        return jsonify({
+            "success": True,
+            "customer_id": customer_id,
+            "message": "Customer created successfully"
+        }), 201
+        
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/customers/<int:customer_id>', methods=['PUT'])
+@login_required
+def update_customer(customer_id):
+    """Update an existing customer"""
+    data = request.get_json()
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Verify customer belongs to user
+    cursor.execute("SELECT id FROM customers WHERE id = ? AND user_id = ?", 
+                   (customer_id, current_user.id))
+    if not cursor.fetchone():
+        conn.close()
+        return jsonify({"error": "Customer not found"}), 404
+    
+    try:
+        cursor.execute("""
+            UPDATE customers 
+            SET customer_name = ?, email = ?, phone = ?, address = ?,
+                city = ?, state = ?, postal_code = ?, country = ?,
+                tax_exempt = ?, notes = ?, updated_at = GETDATE()
+            WHERE id = ? AND user_id = ?
+        """, (
+            data.get('customer_name'),
+            data.get('email'),
+            data.get('phone', ''),
+            data.get('address', ''),
+            data.get('city', ''),
+            data.get('state', ''),
+            data.get('postal_code', ''),
+            data.get('country', 'USA'),
+            1 if data.get('tax_exempt') else 0,
+            data.get('notes', ''),
+            customer_id,
+            current_user.id
+        ))
+        
+        conn.commit()
+        
+        return jsonify({
+            "success": True,
+            "message": "Customer updated successfully"
+        }), 200
+        
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/customers/<int:customer_id>', methods=['DELETE'])
+@login_required
+def delete_customer(customer_id):
+    """Delete a customer"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Check if customer has invoices
+    cursor.execute("SELECT COUNT(*) FROM invoices WHERE customer_id = ?", (customer_id,))
+    invoice_count = cursor.fetchone()[0]
+    
+    if invoice_count > 0:
+        conn.close()
+        return jsonify({"error": f"Cannot delete customer with {invoice_count} invoices"}), 400
+    
+    cursor.execute("DELETE FROM customers WHERE id = ? AND user_id = ?", 
+                   (customer_id, current_user.id))
+    
+    conn.commit()
+    conn.close()
+    
+    return jsonify({"success": True, "message": "Customer deleted successfully"}), 200
+
+# ============================================
+# INVOICE MANAGEMENT
+# ============================================
+
+@app.route('/api/invoices', methods=['GET'])
+@login_required
+def get_invoices():
+    """Get all invoices for the logged-in user"""
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    status = request.args.get('status', '')
+    customer_id = request.args.get('customer_id', type=int)
+    date_from = request.args.get('date_from', '')
+    date_to = request.args.get('date_to', '')
+    
+    offset = (page - 1) * per_page
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Build query
+    query = """
+        SELECT i.id, i.invoice_number, i.invoice_date, i.due_date, i.status,
+               i.subtotal, i.tax_amount, i.discount_amount, i.shipping_fee,
+               i.total_amount, i.amount_paid, i.balance_due,
+               c.customer_name, c.email as customer_email
+        FROM invoices i
+        JOIN customers c ON i.customer_id = c.id
+        WHERE i.user_id = ?
+    """
+    params = [current_user.id]
+    
+    if status:
+        query += " AND i.status = ?"
+        params.append(status)
+    
+    if customer_id:
+        query += " AND i.customer_id = ?"
+        params.append(customer_id)
+    
+    if date_from:
+        query += " AND i.invoice_date >= ?"
+        params.append(date_from)
+    
+    if date_to:
+        query += " AND i.invoice_date <= ?"
+        params.append(date_to)
+    
+    # Get total count
+    count_query = query.replace(
+        "SELECT i.id, i.invoice_number, i.invoice_date, i.due_date, i.status, i.subtotal, i.tax_amount, i.discount_amount, i.shipping_fee, i.total_amount, i.amount_paid, i.balance_due, c.customer_name, c.email as customer_email",
+        "SELECT COUNT(*)"
+    )
+    cursor.execute(count_query, params)
+    total = cursor.fetchone()[0]
+    
+    # Get paginated results
+    query += " ORDER BY i.invoice_date DESC OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
+    params.extend([offset, per_page])
+    
+    cursor.execute(query, params)
+    
+    invoices = []
+    for row in cursor.fetchall():
+        invoices.append({
+            "id": row[0],
+            "invoice_number": row[1],
+            "invoice_date": row[2].isoformat() if row[2] else None,
+            "due_date": row[3].isoformat() if row[3] else None,
+            "status": row[4],
+            "subtotal": float(row[5]) if row[5] else 0,
+            "tax_amount": float(row[6]) if row[6] else 0,
+            "discount_amount": float(row[7]) if row[7] else 0,
+            "shipping_fee": float(row[8]) if row[8] else 0,
+            "total_amount": float(row[9]) if row[9] else 0,
+            "amount_paid": float(row[10]) if row[10] else 0,
+            "balance_due": float(row[11]) if row[11] else 0,
+            "customer_name": row[12],
+            "customer_email": row[13]
+        })
+    
+    conn.close()
+    
+    return jsonify({
+        "invoices": invoices,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": (total + per_page - 1) // per_page
+    }), 200
+
+# ============================================
+# RUN THE APP
+# ============================================
+
+if __name__ == '__main__':
+    print("\n" + "="*50)
+    print("INVOICEAPP - Starting Server")
+    print("="*50)
+    print(f"✓ Debug mode: {app.debug}")
+    print(f"✓ WeasyPrint available: {WEASYPRINT_AVAILABLE}")
+    print("\nServer running at: http://localhost:5000")
+    print("="*50 + "\n")
+    
+    app.run(debug=True, host='0.0.0.0', port=5000)
