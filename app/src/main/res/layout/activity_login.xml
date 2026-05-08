@@ -10,8 +10,8 @@
     <ImageView
         android:layout_width="100dp"
         android:layout_height="100dp"
-        android:src="@drawable/ic_invoice"
-        android:layout_marginBottom="32dp"/>
+        android:layout_marginBottom="32dp"
+        android:src="@drawable/ic_invoice" />
 
     <TextView
         android:layout_width="wrap_content"
@@ -46,9 +46,9 @@
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/etPassword"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="61dp"
             android:hint="Password"
-            android:inputType="textPassword"/>
+            android:inputType="textPassword" />
     </com.google.android.material.textfield.TextInputLayout>
 
     <com.google.android.material.button.MaterialButton

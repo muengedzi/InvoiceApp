@@ -1,4 +1,3 @@
-// viewmodels/AuthViewModel.kt
 package com.invoiceapp.viewmodels
 
 import androidx.lifecycle.LiveData
@@ -7,8 +6,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.invoiceapp.models.LoginRequest
 import com.invoiceapp.models.RegisterRequest
-import com.invoiceapp.network.ApiClient
 import com.invoiceapp.network.ApiResponse
+import com.invoiceapp.network.RetrofitClient  // CHANGE THIS - use RetrofitClient instead of ApiClient
 import kotlinx.coroutines.launch
 
 class AuthViewModel : ViewModel() {
@@ -22,7 +21,7 @@ class AuthViewModel : ViewModel() {
         _loginResult.value = ApiResponse.Loading(true)
         viewModelScope.launch {
             try {
-                val response = ApiClient.apiService.login(LoginRequest(email, password))
+                val response = RetrofitClient.apiService.login(LoginRequest(email, password))  // CHANGE THIS
                 if (response.isSuccessful && response.body()?.success == true) {
                     _loginResult.value = ApiResponse.Success(response.body()!!)
                 } else {
@@ -38,7 +37,7 @@ class AuthViewModel : ViewModel() {
         _registerResult.value = ApiResponse.Loading(true)
         viewModelScope.launch {
             try {
-                val response = ApiClient.apiService.register(RegisterRequest(fullName, email, password, businessName))
+                val response = RetrofitClient.apiService.register(RegisterRequest(fullName, email, password, businessName))  // CHANGE THIS
                 if (response.isSuccessful && response.body()?.success == true) {
                     _registerResult.value = ApiResponse.Success(response.body()!!)
                 } else {

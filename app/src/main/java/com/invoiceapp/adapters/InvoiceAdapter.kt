@@ -48,6 +48,7 @@ class InvoiceAdapter(
                 "paid" -> binding.tvStatus.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
                 "pending" -> binding.tvStatus.setTextColor(android.graphics.Color.parseColor("#FF9800"))
                 "overdue" -> binding.tvStatus.setTextColor(android.graphics.Color.parseColor("#F44336"))
+                "draft" -> binding.tvStatus.setTextColor(android.graphics.Color.parseColor("#2196F3"))
                 else -> binding.tvStatus.setTextColor(android.graphics.Color.parseColor("#9E9E9E"))
             }
             binding.tvStatus.text = invoice.status.uppercase()

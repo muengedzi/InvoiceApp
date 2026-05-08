@@ -177,6 +177,31 @@
 
             </androidx.cardview.widget.CardView>
 
+            <!-- Invoice Items Section -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Invoice Items"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="8dp" />
+
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="8dp"
+                app:cardElevation="2dp">
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/rvInvoiceItems"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:nestedScrollingEnabled="false" />
+
+            </androidx.cardview.widget.CardView>
+
             <!-- Totals -->
             <androidx.cardview.widget.CardView
                 android:layout_width="match_parent"
@@ -357,6 +382,15 @@
                 </LinearLayout>
 
             </androidx.cardview.widget.CardView>
+
+            <!-- Record Payment Button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnRecordPayment"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="16dp"
+                android:text="Record Payment"
+                app:cornerRadius="8dp" />
 
         </LinearLayout>
 

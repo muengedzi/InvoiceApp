@@ -25,6 +25,7 @@ class MainActivity : AppCompatActivity() {
 
         setupToolbar()
         setupBottomNavigation()
+        setupFAB()
         loadFragment(DashboardFragment())
     }
 
@@ -40,31 +41,64 @@ class MainActivity : AppCompatActivity() {
                 R.id.navigation_dashboard -> {
                     loadFragment(DashboardFragment())
                     supportActionBar?.title = "Dashboard"
+                    hideFAB()
                     true
                 }
                 R.id.navigation_invoices -> {
                     loadFragment(InvoicesFragment())
                     supportActionBar?.title = "Invoices"
+                    showFAB()
                     true
                 }
                 R.id.navigation_customers -> {
                     loadFragment(CustomersFragment())
                     supportActionBar?.title = "Customers"
+                    showFAB()
                     true
                 }
                 R.id.navigation_expenses -> {
                     loadFragment(ExpensesFragment())
                     supportActionBar?.title = "Expenses"
+                    showFAB()
                     true
                 }
                 R.id.navigation_settings -> {
                     loadFragment(SettingsFragment())
                     supportActionBar?.title = "Settings"
+                    hideFAB()
                     true
                 }
                 else -> false
             }
         }
+    }
+
+    private fun setupFAB() {
+        binding.fab.setOnClickListener {
+            val currentFragment = supportFragmentManager.findFragmentById(R.id.fragment_container)
+            when (currentFragment) {
+                is InvoicesFragment -> {
+                    startActivity(Intent(this, CreateInvoiceActivity::class.java))
+                }
+                is CustomersFragment -> {
+                    startActivity(Intent(this, AddEditCustomerActivity::class.java))
+                }
+                is ExpensesFragment -> {
+                    startActivity(Intent(this, AddEditExpenseActivity::class.java))
+                }
+                else -> {
+                    // FAB hidden for other fragments
+                }
+            }
+        }
+    }
+
+    private fun showFAB() {
+        binding.fab.show()
+    }
+
+    private fun hideFAB() {
+        binding.fab.hide()
     }
 
     private fun loadFragment(fragment: Fragment) {

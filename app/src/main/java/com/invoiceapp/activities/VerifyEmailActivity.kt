@@ -1,13 +1,12 @@
 package com.invoiceapp.activities
 
+import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.invoiceapp.databinding.ActivityVerifyEmailBinding
-import com.invoiceapp.network.ApiClient
-import com.invoiceapp.network.ApiResponse
-import com.invoiceapp.viewmodels.AuthViewModel
+import com.invoiceapp.network.RetrofitClient
 import kotlinx.coroutines.launch
 
 class VerifyEmailActivity : AppCompatActivity() {
@@ -50,7 +49,7 @@ class VerifyEmailActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
-                val response = ApiClient.apiService.verifyEmail(mapOf("token" to token!!))
+                val response = RetrofitClient.apiService.verifyEmail(mapOf("token" to token!!))
                 if (response.isSuccessful && response.body()?.get("success") == true) {
                     binding.progressBar.visibility = android.view.View.GONE
                     binding.tvStatus.text = "✅ Email verified successfully!"

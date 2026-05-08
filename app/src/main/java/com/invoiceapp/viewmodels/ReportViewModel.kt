@@ -5,8 +5,8 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.invoiceapp.models.ProfitLossReport
-import com.invoiceapp.network.ApiClient
 import com.invoiceapp.network.ApiResponse
+import com.invoiceapp.network.RetrofitClient
 import kotlinx.coroutines.launch
 
 class ReportViewModel : ViewModel() {
@@ -17,7 +17,7 @@ class ReportViewModel : ViewModel() {
         _profitLossReport.value = ApiResponse.Loading(true)
         viewModelScope.launch {
             try {
-                val response = ApiClient.apiService.getProfitLossReport(startDate, endDate)
+                val response = RetrofitClient.apiService.getProfitLossReport(startDate, endDate)
                 if (response.isSuccessful && response.body() != null) {
                     _profitLossReport.value = ApiResponse.Success(response.body()!!)
                 } else {

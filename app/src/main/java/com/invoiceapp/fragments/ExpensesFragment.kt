@@ -8,7 +8,7 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.floatingactionbutton.FloatingActionButton
-import com.invoiceapp.activities.ExpensesActivity
+import com.invoiceapp.activities.AddEditExpenseActivity
 import com.invoiceapp.adapters.ExpenseListAdapter
 import com.invoiceapp.databinding.FragmentExpensesBinding
 import com.invoiceapp.network.ApiResponse
@@ -40,8 +40,9 @@ class ExpensesFragment : Fragment() {
 
     private fun setupRecyclerView() {
         expenseAdapter = ExpenseListAdapter { expenseId ->
-            // Handle expense click - navigate to expense detail
-            // You can create an ExpenseDetailActivity later
+            val intent = Intent(requireContext(), AddEditExpenseActivity::class.java)
+            intent.putExtra("expense_id", expenseId)
+            startActivity(intent)
         }
 
         binding.rvExpenses.apply {
@@ -53,7 +54,7 @@ class ExpensesFragment : Fragment() {
     private fun setupFAB() {
         val fab = requireActivity().findViewById<FloatingActionButton>(com.invoiceapp.R.id.fab)
         fab?.setOnClickListener {
-            startActivity(Intent(requireContext(), ExpensesActivity::class.java))
+            startActivity(Intent(requireContext(), AddEditExpenseActivity::class.java))
         }
         fab?.show()
     }

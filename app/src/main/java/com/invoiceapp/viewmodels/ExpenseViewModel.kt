@@ -6,9 +6,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.invoiceapp.models.Expense
 import com.invoiceapp.models.ExpenseRequest
-import com.invoiceapp.network.ApiClient
 import com.invoiceapp.network.ApiResponse
 import kotlinx.coroutines.launch
+import com.invoiceapp.network.RetrofitClient
 
 class ExpenseViewModel : ViewModel() {
     private val _expenses = MutableLiveData<ApiResponse<List<Expense>>>()
@@ -21,7 +21,7 @@ class ExpenseViewModel : ViewModel() {
         _expenses.value = ApiResponse.Loading(true)
         viewModelScope.launch {
             try {
-                val response = ApiClient.apiService.getExpenses(1, 100, category)
+                val response = RetrofitClient.apiService.getExpenses(1, 100, category)
                 if (response.isSuccessful && response.body() != null) {
                     _expenses.value = ApiResponse.Success(response.body()!!.expenses)
                 } else {
@@ -37,7 +37,7 @@ class ExpenseViewModel : ViewModel() {
         _createResult.value = ApiResponse.Loading(true)
         viewModelScope.launch {
             try {
-                val response = ApiClient.apiService.createExpense(request)
+                val response = RetrofitClient.apiService.createExpense(request)
                 if (response.isSuccessful && response.body() != null) {
                     _createResult.value = ApiResponse.Success(response.body()!!)
                     loadExpenses() // Refresh list

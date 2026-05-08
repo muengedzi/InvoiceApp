@@ -38,6 +38,11 @@ class InvoicesFragment : Fragment() {
         return binding.root
     }
 
+    override fun onResume() {
+        super.onResume()
+        invoiceViewModel.loadInvoices()
+    }
+
     private fun setupRecyclerView() {
         invoiceAdapter = InvoiceAdapter { invoiceId ->
             // Navigate to invoice detail

@@ -5,9 +5,9 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.invoiceapp.models.Customer
-import com.invoiceapp.network.ApiClient
 import com.invoiceapp.network.ApiResponse
 import kotlinx.coroutines.launch
+import com.invoiceapp.network.RetrofitClient
 
 class CustomerViewModel : ViewModel() {
     private val _customers = MutableLiveData<ApiResponse<List<Customer>>>()
@@ -23,7 +23,7 @@ class CustomerViewModel : ViewModel() {
         _customers.value = ApiResponse.Loading(true)
         viewModelScope.launch {
             try {
-                val response = ApiClient.apiService.getCustomers(1, 100, search)
+                val response = RetrofitClient.apiService.getCustomers(1, 100, search)
                 if (response.isSuccessful && response.body() != null) {
                     _customers.value = ApiResponse.Success(response.body()!!.customers)
                 } else {
@@ -39,7 +39,7 @@ class CustomerViewModel : ViewModel() {
         _createResult.value = ApiResponse.Loading(true)
         viewModelScope.launch {
             try {
-                val response = ApiClient.apiService.createCustomer(request)
+                val response = RetrofitClient.apiService.createCustomer(request)
                 if (response.isSuccessful && response.body() != null) {
                     _createResult.value = ApiResponse.Success(response.body()!!)
                     loadCustomers()
@@ -56,7 +56,7 @@ class CustomerViewModel : ViewModel() {
         _deleteResult.value = ApiResponse.Loading(true)
         viewModelScope.launch {
             try {
-                val response = ApiClient.apiService.deleteCustomer(customerId)
+                val response = RetrofitClient.apiService.deleteCustomer(customerId)
                 if (response.isSuccessful && response.body() != null) {
                     _deleteResult.value = ApiResponse.Success(response.body()!!)
                     loadCustomers()

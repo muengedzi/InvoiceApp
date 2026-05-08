@@ -8,7 +8,7 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.floatingactionbutton.FloatingActionButton
-import com.invoiceapp.activities.CustomersActivity
+import com.invoiceapp.activities.AddEditCustomerActivity
 import com.invoiceapp.adapters.CustomerAdapter
 import com.invoiceapp.databinding.FragmentCustomersBinding
 import com.invoiceapp.network.ApiResponse
@@ -40,8 +40,7 @@ class CustomersFragment : Fragment() {
 
     private fun setupRecyclerView() {
         customerAdapter = CustomerAdapter { customerId ->
-            // Navigate to edit customer
-            val intent = Intent(requireContext(), CustomersActivity::class.java)
+            val intent = Intent(requireContext(), AddEditCustomerActivity::class.java)
             intent.putExtra("customer_id", customerId)
             startActivity(intent)
         }
@@ -55,7 +54,7 @@ class CustomersFragment : Fragment() {
     private fun setupFAB() {
         val fab = requireActivity().findViewById<FloatingActionButton>(com.invoiceapp.R.id.fab)
         fab?.setOnClickListener {
-            startActivity(Intent(requireContext(), CustomersActivity::class.java))
+            startActivity(Intent(requireContext(), AddEditCustomerActivity::class.java))
         }
         fab?.show()
     }

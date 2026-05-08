@@ -59,6 +59,15 @@ interface ApiService {
     @DELETE("/api/invoices/{id}")
     suspend fun deleteInvoice(@Path("id") id: Int): Response<Map<String, Any>>
 
+    @POST("/api/invoices/draft")
+    suspend fun createInvoiceAsDraft(@Body request: InvoiceRequest): Response<Map<String, Any>>
+
+    @PUT("/api/invoices/{id}/draft")
+    suspend fun updateInvoiceAsDraft(
+        @Path("id") id: Int,
+        @Body request: InvoiceRequest
+    ): Response<Map<String, Any>>
+
     // ==================== PAYMENT ENDPOINTS ====================
     @POST("/api/invoices/{id}/payments")
     suspend fun recordPayment(
@@ -76,6 +85,18 @@ interface ApiService {
 
     @POST("/api/expenses")
     suspend fun createExpense(@Body request: ExpenseRequest): Response<Map<String, Any>>
+
+    @GET("/api/expenses/{id}")
+    suspend fun getExpense(@Path("id") id: Int): Response<Expense>
+
+    @PUT("/api/expenses/{id}")
+    suspend fun updateExpense(
+        @Path("id") id: Int,
+        @Body request: ExpenseRequest
+    ): Response<Map<String, Any>>
+
+    @DELETE("/api/expenses/{id}")
+    suspend fun deleteExpense(@Path("id") id: Int): Response<Map<String, Any>>
 
     // ==================== BUDGET ENDPOINTS ====================
     @GET("/api/budgets")

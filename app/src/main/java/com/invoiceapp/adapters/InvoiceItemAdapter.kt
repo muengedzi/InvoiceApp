@@ -9,7 +9,7 @@ import java.text.NumberFormat
 
 class InvoiceItemAdapter(
     private val items: List<InvoiceItemRequest>,
-    private val onDeleteClick: (Int) -> Unit
+    private val onDeleteClick: ((Int) -> Unit)? = null
 ) : RecyclerView.Adapter<InvoiceItemAdapter.ViewHolder>() {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -25,18 +25,34 @@ class InvoiceItemAdapter(
 
     override fun getItemCount(): Int = items.size
 
+    fun updateItem(position: Int, newItem: InvoiceItemRequest) {
+        // For updating a specific item if needed
+    }
+
+    fun addItem(item: InvoiceItemRequest) {
+        // For adding new items - you'd need a mutable list
+    }
+
     inner class ViewHolder(private val binding: ItemInvoiceItemBinding) :
         RecyclerView.ViewHolder(binding.root) {
 
         fun bind(item: InvoiceItemRequest, position: Int) {
             binding.tvItemName.text = item.item_name
             binding.tvDescription.text = item.description ?: ""
-            binding.tvQuantity.text = "Qty: ${item.quantity}"
+            binding.tvQuantity.text = "Qty: ${formatQuantity(item.quantity)}"
             binding.tvUnitPrice.text = formatCurrency(item.unit_price)
             binding.tvTotal.text = formatCurrency(item.quantity * item.unit_price - item.discount_amount)
 
             binding.btnDelete.setOnClickListener {
-                onDeleteClick(position)
+                onDeleteClick?.invoke(position)
+            }
+        }
+
+        private fun formatQuantity(quantity: Double): String {
+            return if (quantity == quantity.toLong().toDouble()) {
+                quantity.toLong().toString()
+            } else {
+                quantity.toString()
             }
         }
 

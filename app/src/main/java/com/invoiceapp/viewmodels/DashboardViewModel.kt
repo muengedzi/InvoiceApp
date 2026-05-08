@@ -5,8 +5,8 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.invoiceapp.models.DashboardStats
-import com.invoiceapp.network.ApiClient
 import com.invoiceapp.network.ApiResponse
+import com.invoiceapp.network.RetrofitClient
 import kotlinx.coroutines.launch
 
 class DashboardViewModel : ViewModel() {
@@ -17,7 +17,7 @@ class DashboardViewModel : ViewModel() {
         _dashboardStats.value = ApiResponse.Loading(true)
         viewModelScope.launch {
             try {
-                val response = ApiClient.apiService.getDashboardStats()
+                val response = RetrofitClient.apiService.getDashboardStats()
                 if (response.isSuccessful && response.body() != null) {
                     _dashboardStats.value = ApiResponse.Success(response.body()!!)
                 } else {

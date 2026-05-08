@@ -8,8 +8,8 @@ import androidx.lifecycle.viewModelScope
 import com.invoiceapp.models.Invoice
 import com.invoiceapp.models.InvoiceRequest
 import com.invoiceapp.models.PaymentRequest
-import com.invoiceapp.network.ApiClient
 import com.invoiceapp.network.ApiResponse
+import com.invoiceapp.network.RetrofitClient
 import kotlinx.coroutines.launch
 
 class InvoiceViewModel : ViewModel() {
@@ -32,7 +32,7 @@ class InvoiceViewModel : ViewModel() {
         _invoices.value = ApiResponse.Loading(true)
         viewModelScope.launch {
             try {
-                val response = ApiClient.apiService.getInvoices(page, 20, status)
+                val response = RetrofitClient.apiService.getInvoices(page, 20, status)
                 if (response.isSuccessful && response.body() != null) {
                     _invoices.value = ApiResponse.Success(response.body()!!.invoices)
                 } else {
@@ -48,7 +48,7 @@ class InvoiceViewModel : ViewModel() {
         _invoiceDetail.value = ApiResponse.Loading(true)
         viewModelScope.launch {
             try {
-                val response = ApiClient.apiService.getInvoice(invoiceId)
+                val response = RetrofitClient.apiService.getInvoice(invoiceId)
                 if (response.isSuccessful && response.body() != null) {
                     _invoiceDetail.value = ApiResponse.Success(response.body()!!)
                 } else {
@@ -64,7 +64,7 @@ class InvoiceViewModel : ViewModel() {
         _createResult.value = ApiResponse.Loading(true)
         viewModelScope.launch {
             try {
-                val response = ApiClient.apiService.createInvoice(request)
+                val response = RetrofitClient.apiService.createInvoice(request)
                 if (response.isSuccessful && response.body() != null) {
                     _createResult.value = ApiResponse.Success(response.body()!!)
                 } else {
@@ -76,11 +76,75 @@ class InvoiceViewModel : ViewModel() {
         }
     }
 
+    fun createInvoiceAsDraft(request: InvoiceRequest) {
+        _createResult.value = ApiResponse.Loading(true)
+        viewModelScope.launch {
+            try {
+                val response = RetrofitClient.apiService.createInvoiceAsDraft(request)
+                if (response.isSuccessful && response.body() != null) {
+                    _createResult.value = ApiResponse.Success(response.body()!!)
+                } else {
+                    _createResult.value = ApiResponse.Error("Failed to save draft")
+                }
+            } catch (e: Exception) {
+                _createResult.value = ApiResponse.Error(e.message ?: "Network error")
+            }
+        }
+    }
+
+    fun updateInvoice(id: Int, request: InvoiceRequest) {
+        _createResult.value = ApiResponse.Loading(true)
+        viewModelScope.launch {
+            try {
+                val response = RetrofitClient.apiService.updateInvoice(id, request)
+                if (response.isSuccessful && response.body() != null) {
+                    _createResult.value = ApiResponse.Success(response.body()!!)
+                } else {
+                    _createResult.value = ApiResponse.Error("Failed to update invoice: ${response.message()}")
+                }
+            } catch (e: Exception) {
+                _createResult.value = ApiResponse.Error(e.message ?: "Network error")
+            }
+        }
+    }
+
+    fun updateInvoiceAsDraft(id: Int, request: InvoiceRequest) {
+        _createResult.value = ApiResponse.Loading(true)
+        viewModelScope.launch {
+            try {
+                val response = RetrofitClient.apiService.updateInvoiceAsDraft(id, request)
+                if (response.isSuccessful && response.body() != null) {
+                    _createResult.value = ApiResponse.Success(response.body()!!)
+                } else {
+                    _createResult.value = ApiResponse.Error("Failed to update draft")
+                }
+            } catch (e: Exception) {
+                _createResult.value = ApiResponse.Error(e.message ?: "Network error")
+            }
+        }
+    }
+
+    fun deleteInvoice(id: Int) {
+        _createResult.value = ApiResponse.Loading(true)
+        viewModelScope.launch {
+            try {
+                val response = RetrofitClient.apiService.deleteInvoice(id)
+                if (response.isSuccessful && response.body() != null) {
+                    _createResult.value = ApiResponse.Success(response.body()!!)
+                } else {
+                    _createResult.value = ApiResponse.Error("Failed to delete invoice")
+                }
+            } catch (e: Exception) {
+                _createResult.value = ApiResponse.Error(e.message ?: "Network error")
+            }
+        }
+    }
+
     fun recordPayment(invoiceId: Int, request: PaymentRequest) {
         _paymentResult.value = ApiResponse.Loading(true)
         viewModelScope.launch {
             try {
-                val response = ApiClient.apiService.recordPayment(invoiceId, request)
+                val response = RetrofitClient.apiService.recordPayment(invoiceId, request)
                 if (response.isSuccessful && response.body() != null) {
                     _paymentResult.value = ApiResponse.Success(response.body()!!)
                 } else {
@@ -96,7 +160,7 @@ class InvoiceViewModel : ViewModel() {
         _pdfResult.value = ApiResponse.Loading(true)
         viewModelScope.launch {
             try {
-                val response = ApiClient.apiService.downloadInvoicePdf(invoiceId)
+                val response = RetrofitClient.apiService.downloadInvoicePdf(invoiceId)
                 if (response.isSuccessful && response.body() != null) {
                     _pdfResult.value = ApiResponse.Success(response.body()!!.bytes())
                 } else {

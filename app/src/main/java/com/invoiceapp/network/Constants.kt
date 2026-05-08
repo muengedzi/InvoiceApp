@@ -1,4 +1,4 @@
-package com.invoiceapp.utils
+package com.invoiceapp.network
 
 object Constants {
     // FOR PHYSICAL DEVICE (Samsung S23) - Use your computer's IP

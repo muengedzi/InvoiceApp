@@ -3,6 +3,7 @@ package com.invoiceapp.utils
 import android.content.Context
 import android.content.SharedPreferences
 import com.invoiceapp.models.User
+import com.invoiceapp.network.Constants
 
 class SessionManager(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences(Constants.PREF_NAME, Context.MODE_PRIVATE)

@@ -1,5 +1,7 @@
 package com.invoiceapp.models
 
+import com.google.gson.annotations.SerializedName
+
 data class Invoice(
     val id: Int,
     val invoice_number: String,
@@ -21,7 +23,9 @@ data class Invoice(
     val terms_conditions: String? = null,
     val footer_text: String? = null,
     val items: List<InvoiceItem>? = null,
-    val payments: List<Payment>? = null
+    val payments: List<Payment>? = null,
+    @SerializedName("tax_rate")
+    val taxRate: Double = 0.0
 )
 
 data class InvoiceItemRequest(
@@ -45,7 +49,8 @@ data class InvoiceRequest(
     val notes: String? = null,
     val terms_conditions: String? = null,
     val footer_text: String? = null,
-    val items: List<InvoiceItemRequest>
+    val items: List<InvoiceItemRequest>,
+    val status: String? = null  // Added field for status
 )
 
 data class PaymentRequest(
