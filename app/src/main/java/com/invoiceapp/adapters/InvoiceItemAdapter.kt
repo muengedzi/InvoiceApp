@@ -44,7 +44,10 @@ class InvoiceItemAdapter(
             binding.tvTotal.text = formatCurrency(item.quantity * item.unit_price - item.discount_amount)
 
             binding.btnDelete.setOnClickListener {
-                onDeleteClick?.invoke(position)
+                val currentPosition = adapterPosition
+                if (currentPosition != RecyclerView.NO_POSITION) {
+                    onDeleteClick?.invoke(currentPosition)
+                }
             }
         }
 

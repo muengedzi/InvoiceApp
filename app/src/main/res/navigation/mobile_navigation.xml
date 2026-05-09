@@ -30,6 +30,12 @@
         tools:layout="@layout/fragment_expenses" />
 
     <fragment
+        android:id="@+id/navigation_reports"
+        android:name="com.invoiceapp.fragments.ReportsFragment"
+        android:label="Reports"
+        tools:layout="@layout/fragment_reports" />
+
+    <fragment
         android:id="@+id/navigation_settings"
         android:name="com.invoiceapp.fragments.SettingsFragment"
         android:label="Settings"

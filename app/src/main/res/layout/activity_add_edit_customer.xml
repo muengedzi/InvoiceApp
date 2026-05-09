@@ -191,23 +191,33 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                android:padding="16dp">
+                android:padding="16dp"
+                android:baselineAligned="false">
 
                 <Button
                     android:id="@+id/btnCancel"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
+                    android:layout_height="56dp"
                     android:layout_marginEnd="8dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:maxLines="2"
+                    android:minHeight="56dp"
                     android:text="Cancel"
-                    style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+                    android:textSize="12sp" />
 
                 <Button
                     android:id="@+id/btnSave"
+                    style="@style/Widget.MaterialComponents.Button"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
+                    android:layout_height="56dp"
                     android:layout_weight="1"
-                    android:text="Save Customer" />
+                    android:gravity="center"
+                    android:maxLines="2"
+                    android:minHeight="56dp"
+                    android:text="Save Customer"
+                    android:textSize="12sp" />
 
             </LinearLayout>
 

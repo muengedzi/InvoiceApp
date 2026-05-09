@@ -33,13 +33,15 @@
     <com.google.android.material.textfield.TextInputLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+        android:hint="Payment Method"
+        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+        app:endIconMode="dropdown_menu">
 
-        <com.google.android.material.textfield.TextInputEditText
+        <AutoCompleteTextView
             android:id="@+id/etPaymentMethod"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Payment Method (cash, card, bank transfer)"
+            android:inputType="none"
             android:text="cash" />
 
     </com.google.android.material.textfield.TextInputLayout>

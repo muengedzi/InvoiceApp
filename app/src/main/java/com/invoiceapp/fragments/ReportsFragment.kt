@@ -4,7 +4,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Toast
+import android.app.DatePickerDialog
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import com.github.mikephil.charting.data.BarData
@@ -22,6 +22,10 @@ class ReportsFragment : Fragment() {
     private var _binding: FragmentReportsBinding? = null
     private val binding get() = _binding!!
     private lateinit var reportViewModel: ReportViewModel
+    private val apiDateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+    private val displayDateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.US)
+    private var selectedStartDate: Date = Date()
+    private var selectedEndDate: Date = Date()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -40,19 +44,13 @@ class ReportsFragment : Fragment() {
 
     private fun setupDateRange() {
         val calendar = Calendar.getInstance()
-        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-
-        // Set default to last 30 days
         val endDate = calendar.time
         calendar.add(Calendar.DAY_OF_MONTH, -30)
         val startDate = calendar.time
+        selectedStartDate = startDate
+        selectedEndDate = endDate
 
-        binding.tvDateRange.text = "${formatDate(startDate)} - ${formatDate(endDate)}"
-
-        val startDateStr = dateFormat.format(startDate)
-        val endDateStr = dateFormat.format(endDate)
-
-        reportViewModel.loadProfitLossReport(startDateStr, endDateStr)
+        loadReportForSelectedRange()
     }
 
     private fun setupClickListeners() {
@@ -62,8 +60,56 @@ class ReportsFragment : Fragment() {
     }
 
     private fun showDateRangePicker() {
-        // TODO: Implement proper date range picker
-        Toast.makeText(requireContext(), "Date range picker coming soon", Toast.LENGTH_SHORT).show()
+        val startCalendar = Calendar.getInstance().apply { time = selectedStartDate }
+
+        DatePickerDialog(
+            requireContext(),
+            { _, startYear, startMonth, startDay ->
+                val pickedStart = Calendar.getInstance().apply {
+                    set(startYear, startMonth, startDay)
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }
+                val endCalendar = Calendar.getInstance().apply { time = selectedEndDate }
+
+                DatePickerDialog(
+                    requireContext(),
+                    { _, endYear, endMonth, endDay ->
+                        val pickedEnd = Calendar.getInstance().apply {
+                            set(endYear, endMonth, endDay)
+                            set(Calendar.HOUR_OF_DAY, 23)
+                            set(Calendar.MINUTE, 59)
+                            set(Calendar.SECOND, 59)
+                            set(Calendar.MILLISECOND, 999)
+                        }
+
+                        selectedStartDate = pickedStart.time
+                        selectedEndDate = if (pickedEnd.before(pickedStart)) pickedStart.time else pickedEnd.time
+                        loadReportForSelectedRange()
+                    },
+                    endCalendar.get(Calendar.YEAR),
+                    endCalendar.get(Calendar.MONTH),
+                    endCalendar.get(Calendar.DAY_OF_MONTH)
+                ).apply {
+                    setTitle("Select end date")
+                }.show()
+            },
+            startCalendar.get(Calendar.YEAR),
+            startCalendar.get(Calendar.MONTH),
+            startCalendar.get(Calendar.DAY_OF_MONTH)
+        ).apply {
+            setTitle("Select start date")
+        }.show()
+    }
+
+    private fun loadReportForSelectedRange() {
+        binding.tvDateRange.text = "${formatDate(selectedStartDate)} - ${formatDate(selectedEndDate)}"
+        reportViewModel.loadProfitLossReport(
+            apiDateFormat.format(selectedStartDate),
+            apiDateFormat.format(selectedEndDate)
+        )
     }
 
     private fun observeViewModel() {
@@ -98,6 +144,7 @@ class ReportsFragment : Fragment() {
         }
 
         setupBarChart(report.revenue_by_month)
+        setupInvoiceStatusChart(report.invoice_counts_by_month)
     }
 
     private fun setupBarChart(monthlyRevenue: List<com.invoiceapp.models.MonthlyRevenue>) {
@@ -131,8 +178,51 @@ class ReportsFragment : Fragment() {
     }
 
     private fun formatDate(date: Date): String {
-        val format = SimpleDateFormat("MMM dd, yyyy", Locale.US)
-        return format.format(date)
+        return displayDateFormat.format(date)
+    }
+
+    private fun setupInvoiceStatusChart(monthlyCounts: List<com.invoiceapp.models.MonthlyInvoiceStatusCount>) {
+        val entries = mutableListOf<BarEntry>()
+        val labels = mutableListOf<String>()
+
+        monthlyCounts.forEachIndexed { index, item ->
+            entries.add(
+                BarEntry(
+                    index.toFloat(),
+                    floatArrayOf(
+                        item.paid.toFloat(),
+                        item.pending.toFloat(),
+                        item.quotation.toFloat(),
+                        item.draft.toFloat()
+                    )
+                )
+            )
+            labels.add("${item.month}/${item.year}")
+        }
+
+        if (entries.isNotEmpty()) {
+            val dataSet = BarDataSet(entries, "Invoices")
+            dataSet.stackLabels = arrayOf("Paid", "Pending", "Quotation", "Draft")
+            dataSet.colors = listOf(
+                android.graphics.Color.parseColor("#4CAF50"),
+                android.graphics.Color.parseColor("#FF9800"),
+                android.graphics.Color.parseColor("#2196F3"),
+                android.graphics.Color.parseColor("#9E9E9E")
+            )
+            dataSet.valueTextSize = 10f
+
+            binding.invoiceStatusChart.data = BarData(dataSet)
+            binding.invoiceStatusChart.description.isEnabled = false
+            binding.invoiceStatusChart.xAxis.valueFormatter = IndexAxisValueFormatter(labels)
+            binding.invoiceStatusChart.xAxis.granularity = 1f
+            binding.invoiceStatusChart.xAxis.position = com.github.mikephil.charting.components.XAxis.XAxisPosition.BOTTOM
+            binding.invoiceStatusChart.axisLeft.axisMinimum = 0f
+            binding.invoiceStatusChart.axisRight.isEnabled = false
+            binding.invoiceStatusChart.invalidate()
+        } else {
+            binding.invoiceStatusChart.clear()
+            binding.invoiceStatusChart.setNoDataText("No invoice data available")
+        }
     }
 
     private fun formatCurrency(amount: Double): String {

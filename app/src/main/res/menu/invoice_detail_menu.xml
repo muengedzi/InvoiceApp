@@ -12,6 +12,11 @@
         android:icon="@android:drawable/ic_menu_save"
         app:showAsAction="ifRoom" />
     <item
+        android:id="@+id/menu_send_invoice"
+        android:title="Send Invoice"
+        android:icon="@android:drawable/ic_menu_send"
+        app:showAsAction="ifRoom" />
+    <item
         android:id="@+id/menu_delete"
         android:title="Delete"
         android:icon="@android:drawable/ic_menu_delete"

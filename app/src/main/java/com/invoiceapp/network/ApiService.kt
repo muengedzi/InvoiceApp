@@ -68,6 +68,12 @@ interface ApiService {
         @Body request: InvoiceRequest
     ): Response<Map<String, Any>>
 
+    @POST("/api/invoices/{id}/send")
+    suspend fun sendInvoice(
+        @Path("id") id: Int,
+        @Body request: Any
+    ): Response<Map<String, Any>>
+
     // ==================== PAYMENT ENDPOINTS ====================
     @POST("/api/invoices/{id}/payments")
     suspend fun recordPayment(

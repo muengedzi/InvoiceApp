@@ -36,7 +36,8 @@ data class ProfitLossReport(
     val total_expenses: Double,
     val net_profit: Double,
     val revenue_by_month: List<MonthlyRevenue>,
-    val expenses_by_category: List<CategoryExpense>
+    val expenses_by_category: List<CategoryExpense>,
+    val invoice_counts_by_month: List<MonthlyInvoiceStatusCount> = emptyList()
 )
 
 data class MonthlyRevenue(
@@ -48,4 +49,15 @@ data class MonthlyRevenue(
 data class CategoryExpense(
     val category: String,
     val amount: Double
+)
+
+data class MonthlyInvoiceStatusCount(
+    val year: Int,
+    val month: Int,
+    val paid: Int = 0,
+    val pending: Int = 0,
+    val quotation: Int = 0,
+    val draft: Int = 0,
+    val overdue: Int = 0,
+    val total: Int = 0
 )

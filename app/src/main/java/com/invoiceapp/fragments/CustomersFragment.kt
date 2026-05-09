@@ -38,6 +38,13 @@ class CustomersFragment : Fragment() {
         return binding.root
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (::customerViewModel.isInitialized) {
+            customerViewModel.loadCustomers()
+        }
+    }
+
     private fun setupRecyclerView() {
         customerAdapter = CustomerAdapter { customerId ->
             val intent = Intent(requireContext(), AddEditCustomerActivity::class.java)

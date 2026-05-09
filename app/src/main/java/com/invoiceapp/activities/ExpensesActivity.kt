@@ -1,7 +1,7 @@
 package com.invoiceapp.activities
 
 import android.os.Bundle
-import android.widget.Toast
+import android.content.Intent
 import androidx.appcompat.app.AppCompatActivity
 import com.invoiceapp.databinding.ActivityExpensesBinding
 
@@ -13,7 +13,11 @@ class ExpensesActivity : AppCompatActivity() {
         binding = ActivityExpensesBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        Toast.makeText(this, "Expenses Management - Coming Soon", Toast.LENGTH_SHORT).show()
+        val intent = Intent(this, AddEditExpenseActivity::class.java)
+        if (getIntent().hasExtra("expense_id")) {
+            intent.putExtra("expense_id", getIntent().getIntExtra("expense_id", -1))
+        }
+        startActivity(intent)
         finish()
     }
 }

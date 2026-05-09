@@ -38,6 +38,13 @@ class ExpensesFragment : Fragment() {
         return binding.root
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (::expenseViewModel.isInitialized) {
+            expenseViewModel.loadExpenses()
+        }
+    }
+
     private fun setupRecyclerView() {
         expenseAdapter = ExpenseListAdapter { expenseId ->
             val intent = Intent(requireContext(), AddEditExpenseActivity::class.java)

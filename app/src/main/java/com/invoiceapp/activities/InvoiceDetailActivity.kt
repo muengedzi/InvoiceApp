@@ -1,12 +1,12 @@
 package com.invoiceapp.activities
 
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.widget.ArrayAdapter
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
@@ -14,7 +14,6 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.invoiceapp.R
 import com.invoiceapp.adapters.InvoiceItemAdapter
@@ -24,9 +23,7 @@ import com.invoiceapp.models.PaymentRequest
 import com.invoiceapp.network.ApiResponse
 import com.invoiceapp.viewmodels.InvoiceViewModel
 import com.invoiceapp.utils.SessionManager
-import kotlinx.coroutines.launch
 import java.io.File
-import java.io.FileOutputStream
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.*
@@ -64,7 +61,6 @@ class InvoiceDetailActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Reload invoice details when returning from edit to show updated status
         if (::invoiceViewModel.isInitialized && invoiceId != -1) {
             loadInvoiceDetails()
         }
@@ -124,14 +120,28 @@ class InvoiceDetailActivity : AppCompatActivity() {
         }
 
         invoiceViewModel.createResult.observe(this) { result ->
-            if (result is ApiResponse.Success && result.data is Map<*, *> && result.data["success"] == true) {
-                // This is for deletion result
+            if (result is ApiResponse.Success && result.data is Map<*, *> && result.data["success"] == true && result.data["deleted"] == true) {
                 Toast.makeText(this, "Invoice deleted successfully", Toast.LENGTH_SHORT).show()
                 finish()
             }
         }
 
-        // Observe PDF download result
+        invoiceViewModel.sendResult.observe(this) { result ->
+            when (result) {
+                is ApiResponse.Loading -> showProgressDialog("Sending invoice...")
+                is ApiResponse.Success -> {
+                    dismissProgressDialog()
+                    Toast.makeText(this, "Invoice sent successfully", Toast.LENGTH_SHORT).show()
+                    loadInvoiceDetails()
+                }
+                is ApiResponse.Error -> {
+                    dismissProgressDialog()
+                    Toast.makeText(this, result.message, Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+
+        // Observe PDF download result from server
         invoiceViewModel.pdfResult.observe(this) { result ->
             when (result) {
                 is ApiResponse.Loading -> {
@@ -139,7 +149,7 @@ class InvoiceDetailActivity : AppCompatActivity() {
                 }
                 is ApiResponse.Success -> {
                     dismissProgressDialog()
-                    savePdfToDevice(result.data)
+                    saveAndOpenPdf(result.data)
                 }
                 is ApiResponse.Error -> {
                     dismissProgressDialog()
@@ -159,8 +169,8 @@ class InvoiceDetailActivity : AppCompatActivity() {
         binding.tvInvoiceDate.text = formatDate(invoice.invoice_date)
         binding.tvDueDate.text = formatDate(invoice.due_date)
         binding.tvStatus.text = invoice.status.uppercase()
+        invalidateOptionsMenu()
 
-        // Financial details
         binding.tvSubtotal.text = formatCurrency(invoice.subtotal)
         binding.tvTax.text = formatCurrency(invoice.tax_amount)
         binding.tvDiscount.text = formatCurrency(invoice.discount_amount)
@@ -169,7 +179,6 @@ class InvoiceDetailActivity : AppCompatActivity() {
         binding.tvAmountPaid.text = formatCurrency(invoice.amount_paid)
         binding.tvBalanceDue.text = formatCurrency(invoice.balance_due)
 
-        // Display invoice items
         if (!invoice.items.isNullOrEmpty()) {
             val itemRequests = invoice.items.map {
                 com.invoiceapp.models.InvoiceItemRequest(
@@ -188,7 +197,6 @@ class InvoiceDetailActivity : AppCompatActivity() {
             binding.rvInvoiceItems.visibility = View.GONE
         }
 
-        // Show/hide payment button based on status
         when (invoice.status.lowercase()) {
             "paid" -> {
                 binding.btnRecordPayment.isEnabled = false
@@ -208,7 +216,6 @@ class InvoiceDetailActivity : AppCompatActivity() {
             }
         }
 
-        // Set status color
         when (invoice.status.lowercase()) {
             "paid" -> binding.tvStatus.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
             "pending" -> binding.tvStatus.setTextColor(android.graphics.Color.parseColor("#FF9800"))
@@ -221,8 +228,13 @@ class InvoiceDetailActivity : AppCompatActivity() {
     private fun showPaymentDialog() {
         val dialogView = layoutInflater.inflate(R.layout.dialog_record_payment, null)
         val etAmount = dialogView.findViewById<EditText>(R.id.etAmount)
-        val etPaymentMethod = dialogView.findViewById<EditText>(R.id.etPaymentMethod)
+        val etPaymentMethod = dialogView.findViewById<android.widget.AutoCompleteTextView>(R.id.etPaymentMethod)
         val tvBalanceHint = dialogView.findViewById<TextView>(R.id.tvBalanceHint)
+        val paymentMethods = listOf("cash", "card", "transfer")
+        etPaymentMethod.setAdapter(
+            ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, paymentMethods)
+        )
+        etPaymentMethod.setText(paymentMethods.first(), false)
 
         currentInvoice?.let {
             tvBalanceHint.text = "Balance Due: ${formatCurrency(it.balance_due)}"
@@ -262,7 +274,6 @@ class InvoiceDetailActivity : AppCompatActivity() {
 
     private fun recordPayment(amount: Double, paymentMethod: String) {
         val paymentDate = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-
         val paymentRequest = PaymentRequest(
             amount = amount,
             payment_method = paymentMethod,
@@ -270,33 +281,24 @@ class InvoiceDetailActivity : AppCompatActivity() {
             reference_number = null,
             notes = null
         )
-
         invoiceViewModel.recordPayment(invoiceId, paymentRequest)
     }
 
-    private fun savePdfToDevice(pdfBytes: ByteArray) {
+    private fun saveAndOpenPdf(pdfFile: File) {
         try {
-            // Create directory for invoices
             val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
             val invoiceDir = File(downloadsDir, "InvoiceApp")
             if (!invoiceDir.exists()) {
                 invoiceDir.mkdirs()
             }
 
-            // Create file name
-            val fileName = "invoice_${currentInvoice?.invoice_number ?: invoiceId}_${System.currentTimeMillis()}.pdf"
-            val pdfFile = File(invoiceDir, fileName)
+            val fileName = "invoice_${currentInvoice?.invoice_number ?: invoiceId}.pdf"
+            val destFile = File(invoiceDir, fileName)
 
-            // Write PDF bytes to file
-            FileOutputStream(pdfFile).use { outputStream ->
-                outputStream.write(pdfBytes)
-            }
+            pdfFile.copyTo(destFile, overwrite = true)
 
-            Toast.makeText(this, "PDF saved to: ${pdfFile.absolutePath}", Toast.LENGTH_LONG).show()
-
-            // Open the PDF
-            openPdfFile(pdfFile)
-
+            Toast.makeText(this, "PDF saved to: ${destFile.absolutePath}", Toast.LENGTH_LONG).show()
+            openPdfFile(destFile)
         } catch (e: Exception) {
             Toast.makeText(this, "Error saving PDF: ${e.message}", Toast.LENGTH_LONG).show()
             e.printStackTrace()
@@ -305,26 +307,52 @@ class InvoiceDetailActivity : AppCompatActivity() {
 
     private fun openPdfFile(pdfFile: File) {
         try {
+            // First, try to copy to app's private storage if the file is in Downloads
+            val fileToOpen = if (pdfFile.absolutePath.contains("/Download/") ||
+                pdfFile.absolutePath.contains("Download")) {
+                // Copy to app's cache directory for better FileProvider compatibility
+                val cachedFile = File(cacheDir, pdfFile.name)
+                pdfFile.inputStream().use { input ->
+                    cachedFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                cachedFile
+            } else {
+                pdfFile
+            }
+
             val uri = FileProvider.getUriForFile(
                 this,
                 "${packageName}.fileprovider",
-                pdfFile
+                fileToOpen
             )
 
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, "application/pdf")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY)
             }
 
-            // Check if there's an app to handle PDF
             if (intent.resolveActivity(packageManager) != null) {
                 startActivity(intent)
             } else {
-                Toast.makeText(this, "No PDF viewer app found. File saved at: ${pdfFile.absolutePath}", Toast.LENGTH_LONG).show()
+                Toast.makeText(
+                    this,
+                    "No PDF viewer app found. File saved at: ${pdfFile.absolutePath}",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         } catch (e: Exception) {
-            Toast.makeText(this, "Error opening PDF: ${e.message}", Toast.LENGTH_LONG).show()
             e.printStackTrace()
+            Toast.makeText(this, "Error opening PDF: ${e.message}", Toast.LENGTH_LONG).show()
+
+            // Fallback: Show file location
+            Toast.makeText(
+                this,
+                "PDF saved to: ${pdfFile.absolutePath}\nOpen manually from file manager",
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 
@@ -362,6 +390,13 @@ class InvoiceDetailActivity : AppCompatActivity() {
         return true
     }
 
+    override fun onPrepareOptionsMenu(menu: Menu?): Boolean {
+        val status = currentInvoice?.status?.lowercase()
+        menu?.findItem(R.id.menu_send_invoice)?.isVisible = status == "draft" || status == "pending" || status == "overdue"
+        menu?.findItem(R.id.menu_edit)?.isVisible = status != "paid"
+        return super.onPrepareOptionsMenu(menu)
+    }
+
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             R.id.menu_edit -> {
@@ -375,12 +410,41 @@ class InvoiceDetailActivity : AppCompatActivity() {
                 true
             }
             R.id.menu_download_pdf -> {
-                Toast.makeText(this, "Downloading PDF...", Toast.LENGTH_SHORT).show()
-                invoiceViewModel.downloadInvoicePdf(invoiceId)
+                downloadPdf()
+                true
+            }
+            R.id.menu_send_invoice -> {
+                showSendConfirmation()
                 true
             }
             else -> super.onOptionsItemSelected(item)
         }
+    }
+
+    // FIXED: Changed from generatePdf() to downloadPdf() and using server-side download
+    private fun downloadPdf() {
+        currentInvoice?.let { invoice ->
+            // Call the server-side PDF download
+            invoiceViewModel.downloadInvoicePdf(this, invoiceId)
+        } ?: Toast.makeText(this, "Invoice data not loaded", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun showSendConfirmation() {
+        val status = currentInvoice?.status?.lowercase()
+        val message = if (status == "draft") {
+            "This will mark the invoice as Pending and email it to ${currentInvoice?.customer_email ?: "the customer"}."
+        } else {
+            "This will email the invoice to ${currentInvoice?.customer_email ?: "the customer"}."
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Send Invoice")
+            .setMessage(message)
+            .setPositiveButton("Send") { _, _ ->
+                invoiceViewModel.sendInvoice(invoiceId)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun showDeleteConfirmation() {

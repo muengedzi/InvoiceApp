@@ -13,10 +13,11 @@
         android:background="@color/primary"
         app:titleTextColor="@android:color/white" />
 
-    <ScrollView
+    <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1">
+        android:layout_weight="1"
+        android:fillViewport="true">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -201,6 +202,48 @@
                 android:layout_height="wrap_content"
                 android:visibility="gone" />
 
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardRecurring"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:layout_marginBottom="8dp"
+                app:cardCornerRadius="8dp"
+                app:cardElevation="2dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <CheckBox
+                        android:id="@+id/chkRecurring"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Recurring monthly invoice" />
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/layoutRecurringDay"
+                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:visibility="gone">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/etRecurringDay"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:hint="Monthly send day (1-28)"
+                            android:inputType="number"
+                            android:text="1" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- Invoice Items -->
             <TextView
                 android:layout_width="wrap_content"
@@ -222,8 +265,9 @@
                 android:id="@+id/recyclerInvoiceItems"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:clipToPadding="false"
                 android:nestedScrollingEnabled="false"
-                android:maxHeight="400dp" />
+                android:overScrollMode="never" />
 
             <!-- Financial Details -->
             <TextView
@@ -385,7 +429,7 @@
 
         </LinearLayout>
 
-    </ScrollView>
+    </androidx.core.widget.NestedScrollView>
 
     <!-- Bottom Buttons -->
     <LinearLayout
@@ -394,44 +438,61 @@
         android:orientation="horizontal"
         android:padding="16dp"
         android:background="@android:color/white"
-        android:elevation="4dp">
+        android:elevation="4dp"
+        android:baselineAligned="false">
 
         <Button
             android:id="@+id/btnCancel"
             style="@style/Widget.MaterialComponents.Button.OutlinedButton"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="56dp"
             android:layout_marginEnd="8dp"
             android:layout_weight="1"
+            android:gravity="center"
+            android:maxLines="2"
+            android:minHeight="56dp"
+            android:textSize="12sp"
             android:text="Cancel" />
 
         <Button
             android:id="@+id/btnSaveAsDraft"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="56dp"
             android:layout_weight="1"
             android:layout_marginEnd="8dp"
+            android:gravity="center"
+            android:maxLines="2"
+            android:minHeight="56dp"
             android:text="Save as Draft"
-            style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+            android:textSize="12sp" />
 
         <Button
             android:id="@+id/btnSendInvoice"
+            style="@style/Widget.MaterialComponents.Button"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="56dp"
             android:layout_weight="1"
-            android:text="Send Invoice"
-            android:visibility="gone"
             android:backgroundTint="#4CAF50"
-            style="@style/Widget.MaterialComponents.Button" />
+            android:gravity="center"
+            android:maxLines="2"
+            android:minHeight="56dp"
+            android:text="Send Invoice"
+            android:textSize="12sp"
+            android:visibility="gone" />
 
         <Button
             android:id="@+id/btnCreateInvoice"
+            style="@style/Widget.MaterialComponents.Button"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="56dp"
             android:layout_weight="1"
+            android:gravity="center"
+            android:maxLines="2"
+            android:minHeight="56dp"
             android:text="Create Invoice"
-            android:visibility="visible"
-            style="@style/Widget.MaterialComponents.Button" />
+            android:textSize="12sp"
+            android:visibility="visible" />
 
     </LinearLayout>
 

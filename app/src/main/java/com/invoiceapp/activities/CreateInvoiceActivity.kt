@@ -1,6 +1,7 @@
 package com.invoiceapp.activities
 
 import android.app.DatePickerDialog
+import android.content.Intent
 import android.text.Editable
 import android.text.TextWatcher
 import android.os.Bundle
@@ -37,6 +38,7 @@ class CreateInvoiceActivity : AppCompatActivity() {
     private val displayDateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.US)
     private lateinit var sessionManager: SessionManager
     private var customersList = listOf<Customer>()
+    private var shouldRefreshCustomers = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -61,6 +63,14 @@ class CreateInvoiceActivity : AppCompatActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (shouldRefreshCustomers) {
+            shouldRefreshCustomers = false
+            loadCustomers()
+        }
+    }
+
     private fun setupToolbar() {
         setSupportActionBar(binding.toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
@@ -77,12 +87,15 @@ class CreateInvoiceActivity : AppCompatActivity() {
         itemAdapter = InvoiceItemAdapter(invoiceItems) { position ->
             invoiceItems.removeAt(position)
             itemAdapter.notifyItemRemoved(position)
+            itemAdapter.notifyItemRangeChanged(position, invoiceItems.size - position)
             calculateTotals()
         }
 
         binding.recyclerInvoiceItems.apply {
             layoutManager = LinearLayoutManager(this@CreateInvoiceActivity)
             adapter = itemAdapter
+            isNestedScrollingEnabled = false
+            setHasFixedSize(false)
         }
     }
 
@@ -128,6 +141,14 @@ class CreateInvoiceActivity : AppCompatActivity() {
         binding.btnCancel.setOnClickListener {
             finish()
         }
+
+        binding.chkRecurring.setOnCheckedChangeListener { _, isChecked ->
+            binding.layoutRecurringDay.visibility = if (isChecked) View.VISIBLE else View.GONE
+            if (isChecked && binding.etRecurringDay.text.isNullOrBlank()) {
+                val currentDay = Calendar.getInstance().get(Calendar.DAY_OF_MONTH).coerceAtMost(28)
+                binding.etRecurringDay.setText(currentDay.toString())
+            }
+        }
     }
 
     private fun setupTextWatchers() {
@@ -150,12 +171,23 @@ class CreateInvoiceActivity : AppCompatActivity() {
                 is ApiResponse.Loading -> showLoading(true)
                 is ApiResponse.Success -> {
                     showLoading(false)
-                    val message = if (editingInvoiceId != null && currentInvoiceStatus == "draft" && binding.btnSendInvoice.visibility == View.VISIBLE) {
-                        "Invoice sent successfully!"
-                    } else {
-                        "Invoice saved successfully!"
-                    }
-                    Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Invoice saved successfully!", Toast.LENGTH_SHORT).show()
+                    setResult(RESULT_OK)
+                    finish()
+                }
+                is ApiResponse.Error -> {
+                    showLoading(false)
+                    Toast.makeText(this, result.message, Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+
+        invoiceViewModel.sendResult.observe(this) { result ->
+            when (result) {
+                is ApiResponse.Loading -> showLoading(true)
+                is ApiResponse.Success -> {
+                    showLoading(false)
+                    Toast.makeText(this, "Invoice sent successfully!", Toast.LENGTH_SHORT).show()
                     setResult(RESULT_OK)
                     finish()
                 }
@@ -225,6 +257,9 @@ class CreateInvoiceActivity : AppCompatActivity() {
         binding.etDiscount.setText(invoice.discount_amount.toString())
         binding.etShipping.setText(invoice.shipping_fee.toString())
         binding.etNotes.setText(invoice.notes ?: "")
+        binding.chkRecurring.isChecked = invoice.is_recurring
+        binding.layoutRecurringDay.visibility = if (invoice.is_recurring) View.VISIBLE else View.GONE
+        binding.etRecurringDay.setText((invoice.recurring_day ?: 1).toString())
 
         // Show/hide Send Invoice button and draft warning based on status
         if (invoice.status.lowercase() == "draft") {
@@ -266,8 +301,7 @@ class CreateInvoiceActivity : AppCompatActivity() {
 
     private fun showCustomerSelector() {
         if (customersList.isEmpty()) {
-            Toast.makeText(this, "Loading customers... Please wait", Toast.LENGTH_SHORT).show()
-            loadCustomers()
+            showAddCustomerPrompt()
             return
         }
 
@@ -280,8 +314,27 @@ class CreateInvoiceActivity : AppCompatActivity() {
                 binding.tvSelectedCustomer.text = selectedCustomer?.customer_name
                 binding.tvSelectedCustomerDetails.text = "${selectedCustomer?.email ?: ""}\n${selectedCustomer?.phone ?: ""}"
             }
+            .setPositiveButton("Add Customer") { _, _ ->
+                openAddCustomer()
+            }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+    private fun showAddCustomerPrompt() {
+        AlertDialog.Builder(this)
+            .setTitle("No Customers Yet")
+            .setMessage("Add a customer first, then return here to select them for this invoice.")
+            .setPositiveButton("Add Customer") { _, _ ->
+                openAddCustomer()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun openAddCustomer() {
+        shouldRefreshCustomers = true
+        startActivity(Intent(this, AddEditCustomerActivity::class.java))
     }
 
     private fun showAddItemDialog() {
@@ -317,6 +370,9 @@ class CreateInvoiceActivity : AppCompatActivity() {
 
                 invoiceItems.add(item)
                 itemAdapter.notifyItemInserted(invoiceItems.size - 1)
+                binding.recyclerInvoiceItems.post {
+                    binding.recyclerInvoiceItems.smoothScrollToPosition(invoiceItems.lastIndex)
+                }
                 calculateTotals()
             }
             .setNegativeButton("Cancel", null)
@@ -417,6 +473,14 @@ class CreateInvoiceActivity : AppCompatActivity() {
             return false
         }
 
+        if (binding.chkRecurring.isChecked) {
+            val recurringDay = binding.etRecurringDay.text.toString().toIntOrNull()
+            if (recurringDay == null || recurringDay !in 1..28) {
+                Toast.makeText(this, "Recurring send day must be between 1 and 28", Toast.LENGTH_SHORT).show()
+                return false
+            }
+        }
+
         return true
     }
 
@@ -454,7 +518,7 @@ class CreateInvoiceActivity : AppCompatActivity() {
                 .setTitle("Send Invoice")
                 .setMessage("Are you sure you want to send this invoice? It will no longer be a draft and will be marked as Pending. The customer will be notified.")
                 .setPositiveButton("Send Invoice") { _, _ ->
-                    invoiceViewModel.updateInvoice(id, request)
+                    invoiceViewModel.sendInvoice(id, request)
                 }
                 .setNegativeButton("Cancel", null)
                 .show()
@@ -474,6 +538,10 @@ class CreateInvoiceActivity : AppCompatActivity() {
             notes = binding.etNotes.text.toString().trim().ifEmpty { null },
             terms_conditions = null,
             footer_text = null,
+            is_recurring = binding.chkRecurring.isChecked,
+            recurring_frequency = if (binding.chkRecurring.isChecked) "monthly" else null,
+            recurring_day = if (binding.chkRecurring.isChecked) binding.etRecurringDay.text.toString().toIntOrNull() else null,
+            recurring_active = binding.chkRecurring.isChecked,
             items = invoiceItems.toList(),
             status = null // Status is set only when explicitly converting draft to pending
         )

@@ -7,6 +7,9 @@ import os
 import sys
 import decimal
 import re
+import time
+import threading
+import calendar as month_calendar
 import bcrypt
 import secrets
 import smtplib
@@ -16,6 +19,7 @@ from datetime import datetime, timedelta
 from functools import wraps
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
 
 from flask import (
     Flask, request, jsonify, render_template, 
@@ -101,6 +105,50 @@ def get_db_connection():
         f"Trusted_Connection={DB_CONFIG['trusted_connection']};"
     )
     return pyodbc.connect(conn_str)
+
+def ensure_invoice_recurring_columns(cursor):
+    cursor.execute("""
+        IF COL_LENGTH('dbo.invoices', 'is_recurring') IS NULL
+            ALTER TABLE dbo.invoices ADD is_recurring BIT NOT NULL CONSTRAINT DF_invoices_is_recurring DEFAULT 0
+        IF COL_LENGTH('dbo.invoices', 'recurring_frequency') IS NULL
+            ALTER TABLE dbo.invoices ADD recurring_frequency NVARCHAR(20) NULL
+        IF COL_LENGTH('dbo.invoices', 'recurring_day') IS NULL
+            ALTER TABLE dbo.invoices ADD recurring_day INT NULL
+        IF COL_LENGTH('dbo.invoices', 'recurring_next_send_date') IS NULL
+            ALTER TABLE dbo.invoices ADD recurring_next_send_date DATE NULL
+        IF COL_LENGTH('dbo.invoices', 'recurring_last_sent_at') IS NULL
+            ALTER TABLE dbo.invoices ADD recurring_last_sent_at DATETIME NULL
+        IF COL_LENGTH('dbo.invoices', 'recurring_active') IS NULL
+            ALTER TABLE dbo.invoices ADD recurring_active BIT NOT NULL CONSTRAINT DF_invoices_recurring_active DEFAULT 1
+    """)
+
+def next_monthly_send_date(day, from_date=None):
+    day = max(1, min(int(day or 1), 28))
+    base = from_date or datetime.now().date()
+    if isinstance(base, datetime):
+        base = base.date()
+
+    year = base.year
+    month = base.month
+    candidate = datetime(year, month, day).date()
+    if candidate <= base:
+        month += 1
+        if month > 12:
+            month = 1
+            year += 1
+        candidate = datetime(year, month, day).date()
+    return candidate
+
+def add_month_to_date(date_value):
+    if isinstance(date_value, datetime):
+        date_value = date_value.date()
+    month = date_value.month + 1
+    year = date_value.year
+    if month > 12:
+        month = 1
+        year += 1
+    day = min(date_value.day, month_calendar.monthrange(year, month)[1])
+    return datetime(year, month, day).date()
 
 # Email Configuration
 SMTP_SERVER = "smtp.gmail.com"
@@ -644,6 +692,8 @@ def create_invoice_internal(data, status='pending'):
     """Internal function to create invoice with specified status"""
     conn = get_db_connection()
     cursor = conn.cursor()
+    ensure_invoice_recurring_columns(cursor)
+    conn.commit()
     
     cursor.execute("""
         SELECT ISNULL(MAX(CAST(REPLACE(invoice_number, 'INV-', '') AS INT)), 0) + 1 
@@ -677,14 +727,22 @@ def create_invoice_internal(data, status='pending'):
     discount_amount = float(data.get('discount_amount', 0))
     shipping_fee = float(data.get('shipping_fee', 0))
     total_amount = subtotal + tax_amount - discount_amount + shipping_fee
+    is_recurring = 1 if data.get('is_recurring') else 0
+    recurring_frequency = data.get('recurring_frequency') or ('monthly' if is_recurring else None)
+    recurring_day = int(data.get('recurring_day') or datetime.now().day)
+    recurring_day = max(1, min(recurring_day, 28))
+    recurring_next_send_date = next_monthly_send_date(recurring_day) if is_recurring else None
+    recurring_active = 1 if data.get('recurring_active', bool(is_recurring)) and is_recurring else 0
     
     try:
         cursor.execute("""
             INSERT INTO invoices (
                 user_id, customer_id, invoice_number, invoice_date, due_date,
                 po_number, subtotal, tax_rate, tax_amount, discount_amount, 
-                shipping_fee, total_amount, amount_paid, balance_due, notes, status, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, GETDATE(), GETDATE())
+                shipping_fee, total_amount, amount_paid, balance_due, notes, status,
+                is_recurring, recurring_frequency, recurring_day, recurring_next_send_date,
+                recurring_active, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())
         """, (
             current_user.id,
             data['customer_id'],
@@ -700,7 +758,12 @@ def create_invoice_internal(data, status='pending'):
             total_amount,
             total_amount,
             data.get('notes', ''),
-            status
+            status,
+            is_recurring,
+            recurring_frequency,
+            recurring_day if is_recurring else None,
+            recurring_next_send_date,
+            recurring_active
         ))
         
         invoice_id = cursor.execute("SELECT @@IDENTITY").fetchone()[0]
@@ -771,9 +834,12 @@ def update_invoice_internal(invoice_id, data, status=None):
     """Internal function to update invoice"""
     conn = get_db_connection()
     cursor = conn.cursor()
+    ensure_invoice_recurring_columns(cursor)
+    conn.commit()
     
     cursor.execute("""
-        SELECT id, status, amount_paid, tax_rate, discount_amount, shipping_fee
+        SELECT id, status, amount_paid, tax_rate, discount_amount, shipping_fee,
+               recurring_day, recurring_next_send_date
         FROM invoices
         WHERE id = ? AND user_id = ?
     """, 
@@ -816,9 +882,29 @@ def update_invoice_internal(invoice_id, data, status=None):
         if 'notes' in data:
             update_fields.append("notes = ?")
             params.append(data.get('notes', ''))
-        if status:
+        if 'is_recurring' in data:
+            is_recurring = 1 if data.get('is_recurring') else 0
+            recurring_day = int(data.get('recurring_day') or invoice[6] or datetime.now().day)
+            recurring_day = max(1, min(recurring_day, 28))
+            recurring_next_send_date = next_monthly_send_date(recurring_day) if is_recurring else None
+            update_fields.extend([
+                "is_recurring = ?",
+                "recurring_frequency = ?",
+                "recurring_day = ?",
+                "recurring_next_send_date = ?",
+                "recurring_active = ?"
+            ])
+            params.extend([
+                is_recurring,
+                data.get('recurring_frequency') or ('monthly' if is_recurring else None),
+                recurring_day if is_recurring else None,
+                recurring_next_send_date,
+                1 if data.get('recurring_active', bool(is_recurring)) and is_recurring else 0
+            ])
+        target_status = status or data.get('status')
+        if target_status in ['draft', 'pending', 'overdue', 'paid', 'cancelled', 'quotation', 'quote']:
             update_fields.append("status = ?")
-            params.append(status)
+            params.append(target_status)
         
         update_fields.append("updated_at = GETDATE()")
         params.append(invoice_id)
@@ -903,6 +989,247 @@ def update_invoice_as_draft(invoice_id):
     data = request.get_json()
     return update_invoice_internal(invoice_id, data, 'draft')
 
+def get_invoice_email_payload(invoice_id, user_id=None):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    ensure_invoice_recurring_columns(cursor)
+    conn.commit()
+    owner_id = user_id if user_id is not None else current_user.id
+
+    cursor.execute("""
+        SELECT 
+            i.*,
+            c.customer_name, c.email as customer_email, c.phone as customer_phone,
+            c.address as customer_address, c.city as customer_city, c.state as customer_state,
+            c.postal_code as customer_postal_code, c.country as customer_country,
+            cs.company_name, cs.company_logo_url, cs.company_address, cs.company_phone,
+            cs.company_email, cs.company_website, cs.currency_symbol, cs.currency_code,
+            cs.tax_rate_default, cs.invoice_notes_default, cs.terms_conditions_default,
+            cs.footer_text_default
+        FROM invoices i
+        JOIN customers c ON i.customer_id = c.id
+        LEFT JOIN company_settings cs ON cs.user_id = i.user_id
+        WHERE i.id = ? AND i.user_id = ?
+    """, (invoice_id, owner_id))
+
+    invoice_row = cursor.fetchone()
+    if not invoice_row:
+        conn.close()
+        return None, None
+
+    columns = [column[0] for column in cursor.description]
+    invoice = {}
+    for i, col in enumerate(columns):
+        value = invoice_row[i]
+        if isinstance(value, decimal.Decimal):
+            value = float(value)
+        elif hasattr(value, 'isoformat'):
+            value = value.isoformat() if value else None
+        invoice[col] = value
+
+    cursor.execute("""
+        SELECT id, item_name, description, quantity, unit_price,
+               discount_amount, tax_rate, tax_amount, total_amount
+        FROM invoice_items
+        WHERE invoice_id = ?
+        ORDER BY id
+    """, (invoice_id,))
+
+    items = []
+    for row in cursor.fetchall():
+        items.append({
+            "id": row[0],
+            "item_name": row[1],
+            "description": row[2],
+            "quantity": float(row[3]) if row[3] else 0,
+            "unit_price": float(row[4]) if row[4] else 0,
+            "discount_amount": float(row[5]) if row[5] else 0,
+            "tax_rate": float(row[6]) if row[6] else 0,
+            "tax_amount": float(row[7]) if row[7] else 0,
+            "total_amount": float(row[8]) if row[8] else 0
+        })
+
+    conn.close()
+    return invoice, items
+
+def create_invoice_pdf_html(invoice, items):
+    """Render the invoice HTML used for PDF downloads and invoice emails."""
+    invoice['invoice_date_formatted'] = format_date(invoice.get('invoice_date', ''))
+    invoice['due_date_formatted'] = format_date(invoice.get('due_date', ''))
+    company_name = invoice.get('company_name') or 'InvoiceApp'
+
+    def format_currency(amount):
+        if amount is None:
+            return "R0.00"
+        return f"R{float(amount):,.2f}"
+
+    return render_template(
+        'pdf_invoice.html',
+        invoice=invoice,
+        items=items,
+        company_name=company_name,
+        format_currency=format_currency
+    )
+
+def send_invoice_email(invoice_id, user_id=None):
+    if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
+        raise Exception("Email settings are missing. Configure EMAIL_ADDRESS and EMAIL_PASSWORD in Flask/.env.")
+
+    invoice, items = get_invoice_email_payload(invoice_id, user_id)
+    if not invoice:
+        raise Exception("Invoice not found")
+
+    customer_email = invoice.get('customer_email')
+    if not customer_email:
+        raise Exception("Customer does not have an email address")
+
+    company_name = invoice.get('company_name') or 'InvoiceApp'
+    invoice_number = invoice.get('invoice_number', '')
+    subject = f"Invoice {invoice_number} from {company_name}"
+    html_content = create_invoice_pdf_html(invoice, items)
+
+    msg = MIMEMultipart('mixed')
+    msg["From"] = EMAIL_ADDRESS
+    msg["To"] = customer_email
+    msg["Subject"] = subject
+
+    body = MIMEMultipart('alternative')
+    body.attach(MIMEText(html_content, "html"))
+    msg.attach(body)
+
+    try:
+        pdf_data = pdfkit.from_string(html_content, False, configuration=pdfkit_config, options={
+            'page-size': 'A4',
+            'margin-top': '0.75in',
+            'margin-right': '0.75in',
+            'margin-bottom': '0.75in',
+            'margin-left': '0.75in',
+            'encoding': "UTF-8",
+            'no-outline': None,
+            'enable-local-file-access': None
+        })
+        attachment = MIMEApplication(pdf_data, _subtype="pdf")
+        attachment.add_header('Content-Disposition', 'attachment', filename=f'invoice_{invoice_number}.pdf')
+        msg.attach(attachment)
+    except Exception as e:
+        print(f"PDF attachment skipped: {e}")
+
+    with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+        server.starttls()
+        server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+        server.sendmail(EMAIL_ADDRESS, customer_email, msg.as_string())
+
+    return customer_email
+
+@app.route('/api/invoices/<int:invoice_id>/send', methods=['POST'])
+@login_required
+def send_invoice(invoice_id):
+    data = request.get_json(silent=True) or {}
+
+    if data:
+        update_result = update_invoice_internal(invoice_id, data, 'pending')
+        status_code = update_result[1] if isinstance(update_result, tuple) and len(update_result) > 1 else 200
+        if status_code >= 400:
+            return update_result
+    else:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        ensure_invoice_recurring_columns(cursor)
+        conn.commit()
+        cursor.execute("""
+            UPDATE invoices
+            SET status = CASE WHEN status = 'draft' THEN 'pending' ELSE status END,
+                updated_at = GETDATE()
+            WHERE id = ? AND user_id = ?
+        """, (invoice_id, current_user.id))
+        if cursor.rowcount == 0:
+            conn.rollback()
+            conn.close()
+            return jsonify({"error": "Invoice not found"}), 404
+        conn.commit()
+        conn.close()
+
+    try:
+        sent_to = send_invoice_email(invoice_id)
+        return jsonify({
+            "success": True,
+            "message": "Invoice sent successfully",
+            "sent_to": sent_to
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "message": "Invoice was saved as pending, but email sending failed"
+        }), 500
+
+def process_due_recurring_invoices():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    ensure_invoice_recurring_columns(cursor)
+    conn.commit()
+
+    today = datetime.now().date()
+    cursor.execute("""
+        SELECT id, user_id, recurring_day
+        FROM invoices
+        WHERE is_recurring = 1
+          AND recurring_active = 1
+          AND status IN ('pending', 'overdue', 'paid')
+          AND recurring_next_send_date IS NOT NULL
+          AND recurring_next_send_date <= ?
+    """, (today,))
+    due_invoices = cursor.fetchall()
+    conn.close()
+
+    sent = []
+    failed = []
+    for row in due_invoices:
+        invoice_id, user_id, recurring_day = row
+        try:
+            sent_to = send_invoice_email(invoice_id, user_id)
+            next_send = next_monthly_send_date(recurring_day or 1, today)
+
+            update_conn = get_db_connection()
+            update_cursor = update_conn.cursor()
+            update_cursor.execute("""
+                UPDATE invoices
+                SET recurring_last_sent_at = GETDATE(),
+                    recurring_next_send_date = ?,
+                    updated_at = GETDATE()
+                WHERE id = ? AND user_id = ?
+            """, (next_send, invoice_id, user_id))
+            update_conn.commit()
+            update_conn.close()
+
+            sent.append({"invoice_id": invoice_id, "sent_to": sent_to, "next_send_date": next_send.isoformat()})
+        except Exception as e:
+            failed.append({"invoice_id": invoice_id, "error": str(e)})
+
+    return sent, failed
+
+@app.route('/api/recurring-invoices/process-due', methods=['POST'])
+@login_required
+def process_due_recurring_invoices_route():
+    sent, failed = process_due_recurring_invoices()
+    return jsonify({
+        "success": len(failed) == 0,
+        "sent": sent,
+        "failed": failed
+    }), 200 if len(failed) == 0 else 207
+
+def start_recurring_invoice_worker():
+    def worker():
+        while True:
+            try:
+                process_due_recurring_invoices()
+            except Exception as e:
+                print(f"Recurring invoice worker error: {e}")
+            time.sleep(60 * 60 * 24)
+
+    thread = threading.Thread(target=worker, daemon=True)
+    thread.start()
+
 @app.route('/api/invoices/<int:invoice_id>', methods=['DELETE'])
 @login_required
 def delete_invoice(invoice_id):
@@ -938,6 +1265,8 @@ def get_invoice_by_id(invoice_id):
     """Get a single invoice by ID with all details"""
     conn = get_db_connection()
     cursor = conn.cursor()
+    ensure_invoice_recurring_columns(cursor)
+    conn.commit()
     
     cursor.execute("""
         SELECT i.*, c.customer_name, c.email as customer_email, c.phone as customer_phone,
@@ -1105,220 +1434,10 @@ def record_payment(invoice_id):
 # PDF INVOICE GENERATION USING PDFKIT
 # ============================================
 
-def create_invoice_pdf_html(invoice, items):
-    """Create HTML content for PDF invoice"""
-    
-    def format_currency(amount):
-        if amount is None:
-            return "$0.00"
-        return f"${amount:,.2f}"
-    
-    def format_date(date_str):
-        if not date_str:
-            return ""
-        try:
-            dt = datetime.fromisoformat(date_str)
-            return dt.strftime("%B %d, %Y")
-        except:
-            return date_str
-    
-    html = f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>Invoice {invoice.get('invoice_number', '')}</title>
-    <style>
-        @page {{
-            size: A4;
-            margin: 1.5cm;
-        }}
-        body {{
-            font-family: Arial, Helvetica, sans-serif;
-            font-size: 12px;
-            line-height: 1.4;
-            color: #333;
-        }}
-        .header {{
-            margin-bottom: 20px;
-            border-bottom: 2px solid #4CAF50;
-            padding-bottom: 15px;
-            overflow: hidden;
-        }}
-        .company-info {{
-            float: left;
-            width: 50%;
-        }}
-        .invoice-info {{
-            float: right;
-            width: 45%;
-            text-align: right;
-        }}
-        .clear {{ clear: both; }}
-        .customer-info {{
-            margin: 20px 0;
-            padding: 10px;
-            background-color: #f9f9f9;
-            border-radius: 4px;
-        }}
-        table {{
-            width: 100%;
-            border-collapse: collapse;
-            margin: 15px 0;
-        }}
-        th {{
-            background-color: #4CAF50;
-            color: white;
-            padding: 8px;
-            text-align: left;
-            font-size: 11px;
-        }}
-        td {{
-            padding: 6px 8px;
-            border-bottom: 1px solid #ddd;
-            font-size: 11px;
-        }}
-        .text-right {{ text-align: right; }}
-        .totals {{
-            margin-top: 15px;
-            width: 300px;
-            float: right;
-        }}
-        .totals table {{
-            width: 100%;
-        }}
-        .totals td {{
-            padding: 4px;
-            border: none;
-        }}
-        .grand-total {{
-            font-size: 14px;
-            font-weight: bold;
-            border-top: 2px solid #333;
-        }}
-        .footer {{
-            margin-top: 40px;
-            text-align: center;
-            font-size: 10px;
-            color: #999;
-            border-top: 1px solid #ddd;
-            padding-top: 15px;
-        }}
-        .status {{
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 3px;
-            font-size: 10px;
-            font-weight: bold;
-            color: white;
-        }}
-        .status-paid {{ background-color: #4CAF50; }}
-        .status-pending {{ background-color: #FF9800; }}
-        .status-overdue {{ background-color: #F44336; }}
-        .status-draft {{ background-color: #9E9E9E; }}
-        h2 {{ margin: 0 0 5px 0; font-size: 18px; }}
-        h3 {{ margin: 0 0 5px 0; font-size: 14px; }}
-        p {{ margin: 2px 0; }}
-    </style>
-</head>
-<body>
-    <div class="header">
-        <div class="company-info">
-            <h2>{invoice.get('company_name', 'InvoiceApp')}</h2>
-            <p>{invoice.get('company_address', '')}</p>
-            <p>{invoice.get('company_phone', '')}</p>
-            <p>{invoice.get('company_email', '')}</p>
-        </div>
-        <div class="invoice-info">
-            <h2>INVOICE</h2>
-            <p><strong>Invoice #:</strong> {invoice.get('invoice_number', '')}</p>
-            <p><strong>Date:</strong> {format_date(invoice.get('invoice_date', ''))}</p>
-            <p><strong>Due Date:</strong> {format_date(invoice.get('due_date', ''))}</p>
-            <p><strong>Status:</strong> <span class="status status-{invoice.get('status', 'pending')}">{invoice.get('status', 'PENDING').upper()}</span></p>
-        </div>
-        <div class="clear"></div>
-    </div>
-    
-    <div class="customer-info">
-        <strong>Bill To:</strong><br>
-        {invoice.get('customer_name', '')}<br>
-        {invoice.get('customer_address', '')}<br>
-        {invoice.get('customer_city', '')} {invoice.get('customer_state', '')} {invoice.get('customer_postal_code', '')}<br>
-        {invoice.get('customer_country', '')}<br>
-        <strong>Email:</strong> {invoice.get('customer_email', '')}<br>
-        <strong>Phone:</strong> {invoice.get('customer_phone', '')}
-    </div>
-    
-    <table>
-        <thead>
-            <tr>
-                <th>Item</th>
-                <th>Description</th>
-                <th class="text-right">Qty</th>
-                <th class="text-right">Unit Price</th>
-                <th class="text-right">Discount</th>
-                <th class="text-right">Total</th>
-            </tr>
-        </thead>
-        <tbody>
-"""
-    
-    for item in items:
-        html += f"""
-            <tr>
-                <td><strong>{item.get('item_name', '')}</strong></td>
-                <td>{item.get('description', '') or '-'}</td>
-                <td class="text-right">{item.get('quantity', 0)}</td>
-                <td class="text-right">{format_currency(item.get('unit_price', 0))}</td>
-                <td class="text-right">{format_currency(item.get('discount_amount', 0))}</td>
-                <td class="text-right">{format_currency(item.get('total_amount', 0))}</td>
-            </tr>
-"""
-    
-    subtotal = invoice.get('subtotal', 0)
-    tax_amount = invoice.get('tax_amount', 0)
-    discount_amount = invoice.get('discount_amount', 0)
-    shipping_fee = invoice.get('shipping_fee', 0)
-    total_amount = invoice.get('total_amount', 0)
-    amount_paid = invoice.get('amount_paid', 0)
-    balance_due = invoice.get('balance_due', 0)
-    
-    html += f"""
-        </tbody>
-    </table>
-    
-    <div class="totals">
-        <table>
-            <tr><td>Subtotal:</td><td class="text-right">{format_currency(subtotal)}</td></tr>
-            <tr><td>Tax ({invoice.get('tax_rate', 0)}%):</td><td class="text-right">{format_currency(tax_amount)}</td></tr>
-            <tr><td>Discount:</td><td class="text-right">-{format_currency(discount_amount)}</td></tr>
-            <tr><td>Shipping:</td><td class="text-right">{format_currency(shipping_fee)}</td></tr>
-            <tr class="grand-total"><td><strong>Total:</strong></td><td class="text-right"><strong>{format_currency(total_amount)}</strong></td></tr>
-            <tr><td>Amount Paid:</td><td class="text-right">{format_currency(amount_paid)}</td></tr>
-            <tr><td><strong>Balance Due:</strong></td><td class="text-right"><strong>{format_currency(balance_due)}</strong></td></tr>
-        </table>
-    </div>
-    
-    <div class="clear"></div>
-    
-    {f'<div style="margin-top: 20px;"><strong>Notes:</strong><br>{invoice.get("notes", "")}</div>' if invoice.get('notes') else ''}
-    
-    <div style="margin-top: 15px; font-size: 10px;">
-        <strong>Terms & Conditions:</strong><br>
-        {invoice.get('terms_conditions_default', 'Payment is due within 30 days.')}
-    </div>
-    
-    <div class="footer">
-        {invoice.get('footer_text_default', 'Thank you for your business!')}
-    </div>
-</body>
-</html>"""
-    
-    return html
-
 @app.route('/api/invoices/<int:invoice_id>/pdf', methods=['GET'])
 @login_required
 def generate_invoice_pdf(invoice_id):
-    """Generate PDF for an invoice using pdfkit"""
+    """Generate PDF for an invoice using pdfkit with professional design"""
     conn = None
     try:
         conn = get_db_connection()
@@ -1355,6 +1474,7 @@ def generate_invoice_pdf(invoice_id):
                 value = value.isoformat() if value else None
             invoice[col] = value
         
+        # Get invoice items
         cursor.execute("""
             SELECT 
                 id, item_name, description, quantity, unit_price, 
@@ -1369,7 +1489,7 @@ def generate_invoice_pdf(invoice_id):
             items.append({
                 "id": row[0],
                 "item_name": row[1],
-                "description": row[2],
+                "description": row[2] or "",
                 "quantity": float(row[3]) if row[3] else 0,
                 "unit_price": float(row[4]) if row[4] else 0,
                 "discount_amount": float(row[5]) if row[5] else 0,
@@ -1378,10 +1498,34 @@ def generate_invoice_pdf(invoice_id):
                 "total_amount": float(row[8]) if row[8] else 0
             })
         
-        html_content = create_invoice_pdf_html(invoice, items)
-        
         conn.close()
         conn = None
+        
+        # Format dates for display
+        invoice_date_formatted = format_date(invoice.get('invoice_date', ''))
+        due_date_formatted = format_date(invoice.get('due_date', ''))
+        
+        # Add formatted dates to invoice dict for template
+        invoice['invoice_date_formatted'] = invoice_date_formatted
+        invoice['due_date_formatted'] = due_date_formatted
+        
+        # Company name (use from settings or default)
+        company_name = invoice.get('company_name', 'Broadband LifeStyle')
+        
+        # Format currency helper for template
+        def format_currency(amount):
+            if amount is None:
+                return "R0.00"
+            return f"R{amount:,.2f}"
+        
+        # Render HTML template
+        html = render_template(
+            'pdf_invoice.html',
+            invoice=invoice,
+            items=items,
+            company_name=company_name,
+            format_currency=format_currency
+        )
         
         options = {
             'page-size': 'A4',
@@ -1394,11 +1538,12 @@ def generate_invoice_pdf(invoice_id):
             'enable-local-file-access': None
         }
         
-        pdf_data = pdfkit.from_string(html_content, False, configuration=pdfkit_config, options=options)
+        pdf_data = pdfkit.from_string(html, False, configuration=pdfkit_config, options=options)
         
         response = make_response(pdf_data)
         response.headers['Content-Type'] = 'application/pdf'
-        response.headers['Content-Disposition'] = f'attachment; filename=invoice_{invoice["invoice_number"]}.pdf'
+        invoice_number = invoice.get("invoice_number") or f"INV-{invoice_id}"
+        response.headers['Content-Disposition'] = f'attachment; filename=invoice_{invoice_number}.pdf'
         
         return response
         
@@ -1409,6 +1554,19 @@ def generate_invoice_pdf(invoice_id):
         import traceback
         traceback.print_exc()
         return jsonify({"error": f"PDF generation failed: {str(e)}"}), 500
+
+def format_date(date_str):
+    """Format date string for display"""
+    if not date_str:
+        return ""
+    try:
+        if isinstance(date_str, str):
+            dt = datetime.fromisoformat(date_str)
+        else:
+            dt = date_str
+        return dt.strftime("%B %d, %Y")
+    except:
+        return date_str
 
 # ============================================
 # COMPANY SETTINGS ROUTES
@@ -2059,6 +2217,43 @@ def get_profit_loss_report():
             "amount": float(row[1] or 0)
         } for row in cursor.fetchall()]
 
+        cursor.execute("""
+            SELECT YEAR(invoice_date) AS invoice_year,
+                   MONTH(invoice_date) AS invoice_month,
+                   LOWER(status) AS status,
+                   COUNT(*) AS invoice_count
+            FROM invoices
+            WHERE user_id = ?
+              AND invoice_date >= ?
+              AND invoice_date <= ?
+              AND LOWER(status) IN ('paid', 'pending', 'quotation', 'quote', 'draft', 'overdue')
+            GROUP BY YEAR(invoice_date), MONTH(invoice_date), LOWER(status)
+            ORDER BY YEAR(invoice_date), MONTH(invoice_date)
+        """, (current_user.id, start_date, end_date))
+
+        counts_by_month = {}
+        for row in cursor.fetchall():
+            key = (row[0], row[1])
+            if key not in counts_by_month:
+                counts_by_month[key] = {
+                    "year": row[0],
+                    "month": row[1],
+                    "paid": 0,
+                    "pending": 0,
+                    "quotation": 0,
+                    "draft": 0,
+                    "overdue": 0,
+                    "total": 0
+                }
+            status_key = "quotation" if row[2] == "quote" else row[2]
+            if status_key in counts_by_month[key]:
+                counts_by_month[key][status_key] += int(row[3] or 0)
+            counts_by_month[key]["total"] += int(row[3] or 0)
+
+        invoice_counts_by_month = [
+            counts_by_month[key] for key in sorted(counts_by_month.keys())
+        ]
+
         return jsonify({
             "start_date": start_date,
             "end_date": end_date,
@@ -2066,7 +2261,8 @@ def get_profit_loss_report():
             "total_expenses": total_expenses,
             "net_profit": total_revenue - total_expenses,
             "revenue_by_month": revenue_by_month,
-            "expenses_by_category": expenses_by_category
+            "expenses_by_category": expenses_by_category,
+            "invoice_counts_by_month": invoice_counts_by_month
         }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -2106,5 +2302,6 @@ def test_endpoint():
 # ============================================
 
 if __name__ == '__main__':
-    
+    if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+        start_recurring_invoice_worker()
     app.run(debug=True, host='0.0.0.0', port=5000)

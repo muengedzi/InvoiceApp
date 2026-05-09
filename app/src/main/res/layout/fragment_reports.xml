@@ -165,6 +165,20 @@
             android:layout_width="match_parent"
             android:layout_height="300dp" />
 
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:layout_marginBottom="8dp"
+            android:text="Invoice Status by Month"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <com.github.mikephil.charting.charts.BarChart
+            android:id="@+id/invoiceStatusChart"
+            android:layout_width="match_parent"
+            android:layout_height="320dp" />
+
     </LinearLayout>
 
 </ScrollView>

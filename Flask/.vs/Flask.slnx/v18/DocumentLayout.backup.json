@@ -7,7 +7,8 @@
       "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:app.py||{8B382828-6202-11D1-8870-0000F87579D2}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|ViewDataWindow_MSSQL__/DESKTOP_HEACHMT_SQLEXPRESS/InvoiceApp/True/SqlTable/dbo.payments.sql||{0058A1F7-65F3-4DB9-B3D0-CA7E64DD73CD}"
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\mueng\\OneDrive - Umzimkhulu Municipality\\Documents\\InvoiceApp2\\Flask\\templates\\pdf_invoice.html||{40D31677-CBC0-4297-A9EF-89D907823A98}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:templates\\pdf_invoice.html||{40D31677-CBC0-4297-A9EF-89D907823A98}"
     }
   ],
   "DocumentGroupContainers": [
@@ -16,8 +17,8 @@
       "VerticalTabListWidth": 256,
       "DocumentGroups": [
         {
-          "DockedWidth": 190,
-          "SelectedChildIndex": 5,
+          "DockedWidth": 200,
+          "SelectedChildIndex": -1,
           "Children": [
             {
               "$type": "Bookmark",
@@ -38,20 +39,11 @@
             {
               "$type": "Bookmark",
               "Name": "ST:0:0:{3ae79031-e1bc-11d0-8f78-00a0c9110057}"
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 1,
-              "Title": "dbo.payments.sql",
-              "DocumentMoniker": "ViewDataWindow_MSSQL__/DESKTOP_HEACHMT_SQLEXPRESS/InvoiceApp/True/SqlTable/dbo.payments.sql",
-              "ToolTip": "ViewDataWindow_MSSQL__/DESKTOP_HEACHMT_SQLEXPRESS/InvoiceApp/True/SqlTable/dbo.payments.sql",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000826|",
-              "WhenOpened": "2026-05-07T07:35:38.449Z"
             }
           ]
         },
         {
-          "DockedWidth": 213,
+          "DockedWidth": 198,
           "SelectedChildIndex": 4,
           "Children": [
             {
@@ -72,13 +64,36 @@
             },
             {
               "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "pdf_invoice.html",
+              "DocumentMoniker": "C:\\Users\\mueng\\OneDrive - Umzimkhulu Municipality\\Documents\\InvoiceApp2\\Flask\\templates\\pdf_invoice.html",
+              "RelativeDocumentMoniker": "templates\\pdf_invoice.html",
+              "ToolTip": "C:\\Users\\mueng\\OneDrive - Umzimkhulu Municipality\\Documents\\InvoiceApp2\\Flask\\templates\\pdf_invoice.html",
+              "RelativeToolTip": "templates\\pdf_invoice.html",
+              "ViewState": "AgIAAEMCAAAAAAAAAADwv5MCAAAHAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001512|",
+              "WhenOpened": "2026-05-09T07:51:10.069Z",
+              "EditorCaption": ""
+            }
+          ]
+        },
+        {
+          "DockedWidth": 181,
+          "SelectedChildIndex": 1,
+          "Children": [
+            {
+              "$type": "Bookmark",
+              "Name": "ST:128:0:{116d2292-e37d-41cd-a077-ebacac4c8cc4}"
+            },
+            {
+              "$type": "Document",
               "DocumentIndex": 0,
               "Title": "app.py",
               "DocumentMoniker": "C:\\Users\\mueng\\OneDrive - Umzimkhulu Municipality\\Documents\\InvoiceApp2\\Flask\\app.py",
               "RelativeDocumentMoniker": "app.py",
               "ToolTip": "C:\\Users\\mueng\\OneDrive - Umzimkhulu Municipality\\Documents\\InvoiceApp2\\Flask\\app.py",
               "RelativeToolTip": "app.py",
-              "ViewState": "AgIAAL8BAAAAAAAAAAAAAM4BAAAEAAAAAAAAAA==",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAgAAAAJAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.002457|",
               "WhenOpened": "2026-05-05T08:54:24.342Z",
               "EditorCaption": ""

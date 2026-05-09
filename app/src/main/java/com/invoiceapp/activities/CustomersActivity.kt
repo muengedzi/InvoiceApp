@@ -1,7 +1,7 @@
 package com.invoiceapp.activities
 
 import android.os.Bundle
-import android.widget.Toast
+import android.content.Intent
 import androidx.appcompat.app.AppCompatActivity
 import com.invoiceapp.databinding.ActivityCustomersBinding
 
@@ -13,7 +13,11 @@ class CustomersActivity : AppCompatActivity() {
         binding = ActivityCustomersBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        Toast.makeText(this, "Customers Management - Coming Soon", Toast.LENGTH_SHORT).show()
+        val intent = Intent(this, AddEditCustomerActivity::class.java)
+        if (getIntent().hasExtra("customer_id")) {
+            intent.putExtra("customer_id", getIntent().getIntExtra("customer_id", -1))
+        }
+        startActivity(intent)
         finish()
     }
 }

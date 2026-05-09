@@ -1,16 +1,18 @@
-// viewmodels/InvoiceViewModel.kt
 package com.invoiceapp.viewmodels
 
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.invoiceapp.activities.InvoiceDetailActivity
 import com.invoiceapp.models.Invoice
 import com.invoiceapp.models.InvoiceRequest
 import com.invoiceapp.models.PaymentRequest
 import com.invoiceapp.network.ApiResponse
 import com.invoiceapp.network.RetrofitClient
 import kotlinx.coroutines.launch
+import java.io.File
+import java.io.FileOutputStream
 
 class InvoiceViewModel : ViewModel() {
     private val _invoices = MutableLiveData<ApiResponse<List<Invoice>>>()
@@ -25,8 +27,11 @@ class InvoiceViewModel : ViewModel() {
     private val _paymentResult = MutableLiveData<ApiResponse<Any>>()
     val paymentResult: LiveData<ApiResponse<Any>> = _paymentResult
 
-    private val _pdfResult = MutableLiveData<ApiResponse<ByteArray>>()
-    val pdfResult: LiveData<ApiResponse<ByteArray>> = _pdfResult
+    private val _sendResult = MutableLiveData<ApiResponse<Any>>()
+    val sendResult: LiveData<ApiResponse<Any>> = _sendResult
+
+    private val _pdfResult = MutableLiveData<ApiResponse<File>>()
+    val pdfResult: LiveData<ApiResponse<File>> = _pdfResult
 
     fun loadInvoices(page: Int = 1, status: String? = null) {
         _invoices.value = ApiResponse.Loading(true)
@@ -124,6 +129,22 @@ class InvoiceViewModel : ViewModel() {
         }
     }
 
+    fun sendInvoice(id: Int, request: InvoiceRequest? = null) {
+        _sendResult.value = ApiResponse.Loading(true)
+        viewModelScope.launch {
+            try {
+                val response = RetrofitClient.apiService.sendInvoice(id, request ?: emptyMap<String, Any>())
+                if (response.isSuccessful && response.body() != null) {
+                    _sendResult.value = ApiResponse.Success(response.body()!!)
+                } else {
+                    _sendResult.value = ApiResponse.Error("Failed to send invoice")
+                }
+            } catch (e: Exception) {
+                _sendResult.value = ApiResponse.Error(e.message ?: "Network error")
+            }
+        }
+    }
+
     fun deleteInvoice(id: Int) {
         _createResult.value = ApiResponse.Loading(true)
         viewModelScope.launch {
@@ -156,15 +177,24 @@ class InvoiceViewModel : ViewModel() {
         }
     }
 
-    fun downloadInvoicePdf(invoiceId: Int) {
+    fun downloadInvoicePdf(invoiceId1: InvoiceDetailActivity, invoiceId: Int) {
         _pdfResult.value = ApiResponse.Loading(true)
         viewModelScope.launch {
             try {
                 val response = RetrofitClient.apiService.downloadInvoicePdf(invoiceId)
                 if (response.isSuccessful && response.body() != null) {
-                    _pdfResult.value = ApiResponse.Success(response.body()!!.bytes())
+                    val pdfBytes = response.body()!!.bytes()
+                    val pdfFile = File(invoiceId1.cacheDir, "invoice_${invoiceId}_${System.currentTimeMillis()}.pdf")
+                    FileOutputStream(pdfFile).use { outputStream ->
+                        outputStream.write(pdfBytes)
+                    }
+                    _pdfResult.value = ApiResponse.Success(pdfFile)
                 } else {
-                    _pdfResult.value = ApiResponse.Error("Failed to download PDF")
+                    val errorMessage = response.errorBody()?.string()
+                        ?.takeIf { it.isNotBlank() }
+                        ?: response.message()
+                        ?: "Failed to download PDF"
+                    _pdfResult.value = ApiResponse.Error(errorMessage)
                 }
             } catch (e: Exception) {
                 _pdfResult.value = ApiResponse.Error(e.message ?: "Network error")
