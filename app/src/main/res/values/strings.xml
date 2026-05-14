@@ -10,4 +10,38 @@
     <string name="pending_amount">Pending Amount</string>
     <string name="monthly_profit">Monthly Profit</string>
     <string name="due_now">Due Now</string>
+    <string name="title_items">Items</string>
+
+    <!-- Invoice Detail Activity Strings -->
+    <string name="invoice_details_title">Invoice Details</string>
+    <string name="payment_recorded_success">Payment recorded successfully!</string>
+    <string name="invoice_deleted_success">Invoice deleted successfully</string>
+    <string name="sending_invoice">Sending invoice...</string>
+    <string name="invoice_sent_success">Invoice sent successfully</string>
+    <string name="downloading_pdf">Downloading PDF...</string>
+    <string name="failed_to_download_pdf">Failed to download PDF: %s</string>
+    <string name="na">N/A</string>
+    <string name="tax_type_format">(%s%% %s)</string>
+    <string name="fully_paid">Fully Paid</string>
+    <string name="draft_send_to_enable_payment">Draft - Send to Enable Payment</string>
+    <string name="record_payment">Record Payment</string>
+    <string name="cannot_pay">Cannot Pay</string>
+    <string name="balance_due_format">Balance Due: %s</string>
+    <string name="enter_amount_max">Enter amount (max %s)</string>
+    <string name="record_payment_title">Record Payment</string>
+    <string name="please_enter_amount">Please enter an amount</string>
+    <string name="please_enter_valid_amount">Please enter a valid amount</string>
+    <string name="amount_exceeds_balance">Amount exceeds balance due of %s</string>
+    <string name="pdf_saved_to">PDF saved to: %s</string>
+    <string name="error_saving_pdf">Error saving PDF: %s</string>
+    <string name="no_pdf_viewer_found">No PDF viewer app found. File saved at: %s</string>
+    <string name="error_opening_pdf">Error opening PDF: %s</string>
+    <string name="pdf_saved_location">PDF saved to: %s\nOpen manually from file manager</string>
+    <string name="invoice_data_not_loaded">Invoice data not loaded</string>
+    <string name="the_customer">the customer</string>
+    <string name="send_invoice_draft_message">This will mark the invoice as Pending and email it to %s.</string>
+    <string name="send_invoice_message">This will email the invoice to %s.</string>
+    <string name="send_invoice_title">Send Invoice</string>
+    <string name="delete_invoice_title">Delete Invoice</string>
+    <string name="delete_invoice_confirmation">Are you sure you want to delete this invoice? This action cannot be undone.</string>
 </resources>

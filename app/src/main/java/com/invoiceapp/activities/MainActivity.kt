@@ -62,10 +62,10 @@ class MainActivity : AppCompatActivity() {
                     showFAB()
                     true
                 }
-                R.id.navigation_reports -> {
-                    loadFragment(ReportsFragment())
-                    supportActionBar?.title = "Reports"
-                    hideFAB()
+                R.id.navigation_items -> {
+                    loadFragment(ItemsFragment())
+                    supportActionBar?.title = "Items"
+                    showFAB()
                     true
                 }
                 else -> false
@@ -114,10 +114,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
-            R.id.menu_reports -> {
-                findViewById<BottomNavigationView>(R.id.bottomNavigation).selectedItemId = R.id.navigation_reports
-                true
-            }
             R.id.menu_settings -> {
                 startActivity(Intent(this, SettingsActivity::class.java))
                 true

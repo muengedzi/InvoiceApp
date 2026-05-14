@@ -105,7 +105,7 @@ class CreateInvoiceActivity : AppCompatActivity() {
         }
 
         binding.btnAddItem.setOnClickListener {
-            showAddItemDialog()
+            showSelectItemDialog()
         }
 
         binding.btnSelectDate.setOnClickListener {
@@ -156,6 +156,14 @@ class CreateInvoiceActivity : AppCompatActivity() {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
             override fun afterTextChanged(s: Editable?) {
+                if (s === binding.etTaxRate.editableText) {
+                    val newRate = s.toString().toDoubleOrNull() ?: 0.0
+                    // When global tax rate changes, update all items (Bookipi behavior)
+                    for (i in invoiceItems.indices) {
+                        invoiceItems[i] = invoiceItems[i].copy(tax_rate = newRate)
+                    }
+                    itemAdapter.notifyDataSetChanged()
+                }
                 calculateTotals()
             }
         }
@@ -163,6 +171,10 @@ class CreateInvoiceActivity : AppCompatActivity() {
         binding.etTaxRate.addTextChangedListener(watcher)
         binding.etDiscount.addTextChangedListener(watcher)
         binding.etShipping.addTextChangedListener(watcher)
+
+        binding.rgTaxType.setOnCheckedChangeListener { _, _ ->
+            calculateTotals()
+        }
     }
 
     private fun observeViewModel() {
@@ -254,6 +266,11 @@ class CreateInvoiceActivity : AppCompatActivity() {
         binding.etDueDate.setText(invoice.due_date)
         binding.tvSelectedDueDate.text = formatDateForDisplay(invoice.due_date)
         binding.etTaxRate.setText(invoice.taxRate.toString())
+        if (invoice.tax_type == "inclusive") {
+            binding.rbTaxInclusive.isChecked = true
+        } else {
+            binding.rbTaxExclusive.isChecked = true
+        }
         binding.etDiscount.setText(invoice.discount_amount.toString())
         binding.etShipping.setText(invoice.shipping_fee.toString())
         binding.etNotes.setText(invoice.notes ?: "")
@@ -337,13 +354,60 @@ class CreateInvoiceActivity : AppCompatActivity() {
         startActivity(Intent(this, AddEditCustomerActivity::class.java))
     }
 
-    private fun showAddItemDialog() {
+    private fun showSelectItemDialog() {
+        lifecycleScope.launch {
+            try {
+                val response = RetrofitClient.apiService.getInvoiceItems(page = 1, perPage = 100)
+                if (response.isSuccessful && response.body() != null) {
+                    val items = response.body()!!.items
+                    if (items.isEmpty()) {
+                        showAddItemDialog()
+                        return@launch
+                    }
+
+                    val itemNames = items.map { "${it.itemName} - ${formatCurrency(it.unitPrice)}" }.toTypedArray()
+
+                    AlertDialog.Builder(this@CreateInvoiceActivity)
+                        .setTitle("Select Item")
+                        .setItems(itemNames) { _, which ->
+                            val selectedItem = items[which]
+                            // Pre-fill the add item dialog with selected item data
+                            showAddItemDialogWithData(selectedItem)
+                        }
+                        .setPositiveButton("Create New") { _, _ ->
+                            showAddItemDialog()
+                        }
+                        .setNegativeButton("Cancel", null)
+                        .show()
+                } else {
+                    showAddItemDialog()
+                }
+            } catch (e: Exception) {
+                showAddItemDialog()
+            }
+        }
+    }
+
+    private fun showAddItemDialogWithData(item: InvoiceItemMaster) {
         val dialogView = layoutInflater.inflate(R.layout.dialog_add_invoice_item, null)
         val etItemName = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.etItemName)
         val etDescription = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.etDescription)
         val etQuantity = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.etQuantity)
         val etUnitPrice = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.etUnitPrice)
         val etDiscount = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.etDiscount)
+        val etTaxRate = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.etItemTaxRate)
+        val chkSaveForLater = dialogView.findViewById<com.google.android.material.checkbox.MaterialCheckBox>(R.id.chkSaveForLater)
+
+        etItemName.setText(item.itemName)
+        etDescription.setText(item.description ?: "")
+        etUnitPrice.setText(item.unitPrice.toString())
+        etQuantity.setText("1")
+        
+        // Use item's tax rate or fall back to global rate
+        val defaultTaxRate = if (item.taxRate > 0) item.taxRate else (binding.etTaxRate.text.toString().toDoubleOrNull() ?: 0.0)
+        etTaxRate.setText(defaultTaxRate.toString())
+        
+        chkSaveForLater.visibility = View.GONE // Already a master item
 
         AlertDialog.Builder(this)
             .setTitle("Add Invoice Item")
@@ -358,6 +422,60 @@ class CreateInvoiceActivity : AppCompatActivity() {
                 val quantity = etQuantity.text.toString().toDoubleOrNull() ?: 1.0
                 val unitPrice = etUnitPrice.text.toString().toDoubleOrNull() ?: 0.0
                 val discount = etDiscount.text.toString().toDoubleOrNull() ?: 0.0
+                val taxRate = etTaxRate.text.toString().toDoubleOrNull() ?: 0.0
+
+                val invoiceItem = InvoiceItemRequest(
+                    item_name = itemName,
+                    description = etDescription.text.toString().trim().ifEmpty { null },
+                    quantity = quantity,
+                    unit_price = unitPrice,
+                    discount_amount = discount,
+                    tax_rate = taxRate
+                )
+
+                invoiceItems.add(invoiceItem)
+                itemAdapter.notifyItemInserted(invoiceItems.size - 1)
+                binding.recyclerInvoiceItems.post {
+                    binding.recyclerInvoiceItems.smoothScrollToPosition(invoiceItems.lastIndex)
+                }
+                calculateTotals()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showAddItemDialog() {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_add_invoice_item, null)
+        val etItemName = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.etItemName)
+        val etDescription = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.etDescription)
+        val etQuantity = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.etQuantity)
+        val etUnitPrice = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.etUnitPrice)
+        val etDiscount = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.etDiscount)
+        val etTaxRate = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.etItemTaxRate)
+        val chkSaveForLater = dialogView.findViewById<com.google.android.material.checkbox.MaterialCheckBox>(R.id.chkSaveForLater)
+
+        // Pre-fill with global tax rate
+        etTaxRate.setText(binding.etTaxRate.text.toString())
+
+        AlertDialog.Builder(this)
+            .setTitle("Add Invoice Item")
+            .setView(dialogView)
+            .setPositiveButton("Add") { _, _ ->
+                val itemName = etItemName.text.toString().trim()
+                if (itemName.isEmpty()) {
+                    Toast.makeText(this, "Item name required", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+
+                val quantity = etQuantity.text.toString().toDoubleOrNull() ?: 1.0
+                val unitPrice = etUnitPrice.text.toString().toDoubleOrNull() ?: 0.0
+                val discount = etDiscount.text.toString().toDoubleOrNull() ?: 0.0
+                val taxRate = etTaxRate.text.toString().toDoubleOrNull() ?: 0.0
+                val saveForLater = chkSaveForLater.isChecked
+
+                if (saveForLater) {
+                    saveItemToMasterList(itemName, etDescription.text.toString(), unitPrice, taxRate)
+                }
 
                 val item = InvoiceItemRequest(
                     item_name = itemName,
@@ -365,7 +483,7 @@ class CreateInvoiceActivity : AppCompatActivity() {
                     quantity = quantity,
                     unit_price = unitPrice,
                     discount_amount = discount,
-                    tax_rate = 0.0
+                    tax_rate = taxRate
                 )
 
                 invoiceItems.add(item)
@@ -377,6 +495,25 @@ class CreateInvoiceActivity : AppCompatActivity() {
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+    private fun saveItemToMasterList(name: String, description: String, price: Double, taxRate: Double) {
+        lifecycleScope.launch {
+            try {
+                val request = InvoiceItemMasterRequest(
+                    itemName = name,
+                    description = description.ifBlank { null },
+                    unitPrice = price,
+                    taxRate = taxRate
+                )
+                val response = RetrofitClient.apiService.createInvoiceItem(request)
+                if (!response.isSuccessful) {
+                    Toast.makeText(this@CreateInvoiceActivity, "Failed to save item for later use", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                // Silently fail or log
+            }
+        }
     }
 
     private fun showDatePicker() {
@@ -432,18 +569,30 @@ class CreateInvoiceActivity : AppCompatActivity() {
 
     private fun calculateTotals() {
         var subtotal = 0.0
+        var totalTaxAmount = 0.0
+        val isTaxInclusive = binding.rbTaxInclusive.isChecked
+
         for (item in invoiceItems) {
-            subtotal += item.quantity * item.unit_price - item.discount_amount
+            val itemAmount = item.quantity * item.unit_price - item.discount_amount
+            subtotal += itemAmount
+            
+            val taxRate = item.tax_rate
+            if (isTaxInclusive) {
+                // Formula: Tax = Total - (Total / (1 + Rate))
+                totalTaxAmount += itemAmount - (itemAmount / (1 + (taxRate / 100)))
+            } else {
+                totalTaxAmount += itemAmount * (taxRate / 100)
+            }
         }
 
-        val taxRate = binding.etTaxRate.text.toString().toDoubleOrNull() ?: 0.0
-        val taxAmount = subtotal * (taxRate / 100)
         val discount = binding.etDiscount.text.toString().toDoubleOrNull() ?: 0.0
         val shipping = binding.etShipping.text.toString().toDoubleOrNull() ?: 0.0
-        val total = subtotal + taxAmount - discount + shipping
+        
+        val finalSubtotal = if (isTaxInclusive) subtotal - totalTaxAmount else subtotal
+        val total = (if (isTaxInclusive) subtotal else subtotal + totalTaxAmount) - discount + shipping
 
-        binding.tvSubtotal.text = formatCurrency(subtotal)
-        binding.tvTaxAmount.text = formatCurrency(taxAmount)
+        binding.tvSubtotal.text = formatCurrency(finalSubtotal)
+        binding.tvTaxAmount.text = formatCurrency(totalTaxAmount)
         binding.tvTotal.text = formatCurrency(total)
     }
 
@@ -543,7 +692,8 @@ class CreateInvoiceActivity : AppCompatActivity() {
             recurring_day = if (binding.chkRecurring.isChecked) binding.etRecurringDay.text.toString().toIntOrNull() else null,
             recurring_active = binding.chkRecurring.isChecked,
             items = invoiceItems.toList(),
-            status = null // Status is set only when explicitly converting draft to pending
+            status = null, // Status is set only when explicitly converting draft to pending
+            tax_type = if (binding.rbTaxInclusive.isChecked) "inclusive" else "exclusive"
         )
     }
 

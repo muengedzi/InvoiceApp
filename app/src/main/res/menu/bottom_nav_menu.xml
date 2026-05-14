@@ -17,13 +17,13 @@
         android:title="@string/title_customers" />
 
     <item
+        android:id="@+id/navigation_items"
+        android:icon="@drawable/ic_items"
+        android:title="Items" />
+
+    <item
         android:id="@+id/navigation_expenses"
         android:icon="@drawable/ic_expenses"
         android:title="@string/title_expenses" />
-
-    <item
-        android:id="@+id/navigation_reports"
-        android:icon="@drawable/ic_reports"
-        android:title="@string/title_reports" />
 
 </menu>

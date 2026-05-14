@@ -76,6 +76,15 @@ class InvoiceDetailActivity : AppCompatActivity() {
         binding.btnRecordPayment.setOnClickListener {
             showPaymentDialog()
         }
+
+        binding.btnCommunication.setOnClickListener {
+            val intent = Intent(this, CommunicationActivity::class.java)
+            intent.putExtra("invoice_id", invoiceId)
+            intent.putExtra("invoice_number", currentInvoice?.invoice_number)
+            intent.putExtra("customer_name", currentInvoice?.customer_name)
+            intent.putExtra("customer_email", currentInvoice?.customer_email)
+            startActivity(intent)
+        }
     }
 
     private fun setupItemsRecyclerView() {
@@ -173,6 +182,14 @@ class InvoiceDetailActivity : AppCompatActivity() {
 
         binding.tvSubtotal.text = formatCurrency(invoice.subtotal)
         binding.tvTax.text = formatCurrency(invoice.tax_amount)
+
+        if (invoice.taxRate > 0) {
+            binding.tvTaxType.visibility = View.VISIBLE
+            binding.tvTaxType.text = "(${invoice.taxRate}% ${invoice.tax_type.capitalize()})"
+        } else {
+            binding.tvTaxType.visibility = View.GONE
+        }
+
         binding.tvDiscount.text = formatCurrency(invoice.discount_amount)
         binding.tvShipping.text = formatCurrency(invoice.shipping_fee)
         binding.tvTotal.text = formatCurrency(invoice.total_amount)

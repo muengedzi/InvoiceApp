@@ -17,7 +17,7 @@ data class Invoice(
     val balance_due: Double,
     val customer_name: String? = null,
     val customer_email: String? = null,
-    val customer_phone: String? = null,  // ADDED: Customer phone number
+    val customer_phone: String? = null,
     val customer_id: Int? = null,
     val po_number: String? = null,
     val notes: String? = null,
@@ -31,7 +31,8 @@ data class Invoice(
     val items: List<InvoiceItem>? = null,
     val payments: List<Payment>? = null,
     @SerializedName("tax_rate")
-    val taxRate: Double = 0.0
+    val taxRate: Double = 0.0,
+    val tax_type: String = "exclusive"
 )
 
 data class InvoiceItemRequest(
@@ -60,7 +61,8 @@ data class InvoiceRequest(
     val recurring_day: Int? = null,
     val recurring_active: Boolean = true,
     val items: List<InvoiceItemRequest>,
-    val status: String? = null
+    val status: String? = null,
+    val tax_type: String = "exclusive"
 )
 
 data class PaymentRequest(
@@ -78,3 +80,5 @@ data class InvoiceListResponse(
     val per_page: Int,
     val total_pages: Int
 )
+
+// REMOVED: InvoiceItemMasterRequest - it's now only in InvoiceItemMaster.kt

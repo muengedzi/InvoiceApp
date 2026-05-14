@@ -1,6 +1,7 @@
 package com.invoiceapp.adapters
 
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import com.invoiceapp.databinding.ItemInvoiceItemBinding
@@ -42,6 +43,8 @@ class InvoiceItemAdapter(
             binding.tvQuantity.text = "Qty: ${formatQuantity(item.quantity)}"
             binding.tvUnitPrice.text = formatCurrency(item.unit_price)
             binding.tvTotal.text = formatCurrency(item.quantity * item.unit_price - item.discount_amount)
+            binding.tvTaxRate.text = "Tax: ${item.tax_rate}%"
+            binding.tvTaxRate.visibility = if (item.tax_rate > 0) View.VISIBLE else View.GONE
 
             binding.btnDelete.setOnClickListener {
                 val currentPosition = adapterPosition

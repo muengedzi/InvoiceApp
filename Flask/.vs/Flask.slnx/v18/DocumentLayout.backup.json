@@ -43,7 +43,7 @@
           ]
         },
         {
-          "DockedWidth": 198,
+          "DockedWidth": 193,
           "SelectedChildIndex": 4,
           "Children": [
             {
@@ -70,7 +70,7 @@
               "RelativeDocumentMoniker": "templates\\pdf_invoice.html",
               "ToolTip": "C:\\Users\\mueng\\OneDrive - Umzimkhulu Municipality\\Documents\\InvoiceApp2\\Flask\\templates\\pdf_invoice.html",
               "RelativeToolTip": "templates\\pdf_invoice.html",
-              "ViewState": "AgIAAEMCAAAAAAAAAADwv5MCAAAHAAAAAAAAAA==",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAA4AAAArAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001512|",
               "WhenOpened": "2026-05-09T07:51:10.069Z",
               "EditorCaption": ""
@@ -78,7 +78,7 @@
           ]
         },
         {
-          "DockedWidth": 181,
+          "DockedWidth": 187,
           "SelectedChildIndex": 1,
           "Children": [
             {
@@ -93,7 +93,7 @@
               "RelativeDocumentMoniker": "app.py",
               "ToolTip": "C:\\Users\\mueng\\OneDrive - Umzimkhulu Municipality\\Documents\\InvoiceApp2\\Flask\\app.py",
               "RelativeToolTip": "app.py",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAgAAAAJAAAAAAAAAA==",
+              "ViewState": "AgIAAAICAAAAAAAAAAAIwMoEAAAPAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.002457|",
               "WhenOpened": "2026-05-05T08:54:24.342Z",
               "EditorCaption": ""

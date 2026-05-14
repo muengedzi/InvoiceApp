@@ -79,6 +79,11 @@
             android:exported="false" />
 
         <activity
+            android:name=".activities.ManageItemsActivity"
+            android:exported="false"
+            android:label="Manage Items" />
+
+        <activity
             android:name=".activities.VerifyEmailActivity"
             android:exported="true"
             android:launchMode="singleTop">
@@ -102,6 +107,7 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <activity android:name=".activities.CommunicationActivity" />
     </application>
 
 </manifest>

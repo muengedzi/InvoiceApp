@@ -17,6 +17,8 @@
     <color name="error">#F44336</color>
     <color name="success">#4CAF50</color>
     <color name="warning">#FFC107</color>
+    <color name="warning_background">#FFF3E0</color>
+    <color name="warning_text">#E65100</color>
 
 
 

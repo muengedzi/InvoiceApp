@@ -91,10 +91,6 @@ class DashboardFragment : Fragment() {
         binding.tvStatValueExpenses.text = formatCurrency(stats.total_expenses)
         binding.tvStatValueProfit.text = formatCurrency(stats.monthly_profit)
 
-        // Update monthly stats
-        binding.tvMonthlyRevenue.text = formatCurrency(stats.monthly_revenue)
-        binding.tvMonthlyExpenses.text = formatCurrency(stats.monthly_expenses)
-
         // Update recent invoices
         invoiceAdapter.submitList(stats.recent_invoices)
 
@@ -103,6 +99,17 @@ class DashboardFragment : Fragment() {
 
         // Setup pie chart
         setupPieChart(stats.invoice_counts)
+
+        // Navigation for View All
+        binding.tvViewAllInvoices.setOnClickListener {
+            val bottomNav = requireActivity().findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.bottomNavigation)
+            bottomNav.selectedItemId = R.id.navigation_invoices
+        }
+
+        binding.tvViewAllExpenses.setOnClickListener {
+            val bottomNav = requireActivity().findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.bottomNavigation)
+            bottomNav.selectedItemId = R.id.navigation_expenses
+        }
     }
 
     private fun setupPieChart(invoiceCounts: Map<String, Int>) {

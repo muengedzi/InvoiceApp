@@ -140,4 +140,66 @@ interface ApiService {
     // Add this to ApiService.kt
     @POST("/api/verify-email")
     suspend fun verifyEmail(@Body token: Map<String, String>): Response<Map<String, Any>>
+
+    // ==================== INVOICE ITEMS MASTER ENDPOINTS ====================
+    @GET("/api/invoice-items")
+    suspend fun getInvoiceItems(
+        @Query("page") page: Int = 1,
+        @Query("per_page") perPage: Int = 50,
+        @Query("search") search: String? = null,
+        @Query("category_id") categoryId: Int? = null
+    ): Response<InvoiceItemMasterListResponse>
+
+    @POST("/api/invoice-items")
+    suspend fun createInvoiceItem(@Body request: InvoiceItemMasterRequest): Response<Map<String, Any>>
+
+    @PUT("/api/invoice-items/{id}")
+    suspend fun updateInvoiceItem(
+        @Path("id") id: Int,
+        @Body request: InvoiceItemMasterRequest
+    ): Response<Map<String, Any>>
+
+    @DELETE("/api/invoice-items/{id}")
+    suspend fun deleteInvoiceItem(@Path("id") id: Int): Response<Map<String, Any>>
+
+    // ==================== INVOICE ITEM CATEGORIES ENDPOINTS ====================
+    @GET("/api/invoice-item-categories")
+    suspend fun getInvoiceItemCategories(): Response<List<InvoiceItemCategory>>
+
+    @POST("/api/invoice-item-categories")
+    suspend fun createInvoiceItemCategory(@Body request: Map<String, String>): Response<Map<String, Any>>
+
+    @PUT("/api/invoice-item-categories/{id}")
+    suspend fun updateInvoiceItemCategory(
+        @Path("id") id: Int,
+        @Body request: Map<String, String>
+    ): Response<Map<String, Any>>
+
+    @DELETE("/api/invoice-item-categories/{id}")
+    suspend fun deleteInvoiceItemCategory(@Path("id") id: Int): Response<Map<String, Any>>
+
+    // ==================== INVOICE COMMUNICATION ENDPOINTS ====================
+    @GET("/api/invoices/{id}/communications")
+    suspend fun getInvoiceCommunications(@Path("id") id: Int): Response<List<InvoiceCommunication>>
+
+    @POST("/api/invoices/send-email")
+    suspend fun sendInvoiceEmail(@Body request: SendInvoiceEmailRequest): Response<Map<String, Any>>
+
+    @POST("/api/invoices/send-reply")
+    suspend fun sendReply(@Body request: SendReplyRequest): Response<Map<String, Any>>
+
+    @GET("/api/invoices/communications/summary")
+    suspend fun getCommunicationSummary(): Response<InvoiceCommunicationSummary>
+
+    @GET("/api/invoices/follow-ups/pending")
+    suspend fun getPendingFollowUps(): Response<List<InvoiceFollowUp>>
+
+    @POST("/api/invoices/follow-ups/{id}/mark-sent")
+    suspend fun markFollowUpSent(@Path("id") id: Int): Response<Map<String, Any>>
+
+    @POST("/api/invoices/follow-ups/{id}/complete")
+    suspend fun completeFollowUp(@Path("id") id: Int): Response<Map<String, Any>>
+
+    @GET("/api/customers/{id}/communication-thread")
+    suspend fun getCustomerCommunicationThread(@Path("id") id: Int): Response<CustomerCommunicationThread>
 }

@@ -264,6 +264,17 @@
 
                     </LinearLayout>
 
+                    <TextView
+                        android:id="@+id/tvTaxType"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="(Exclusive)"
+                        android:textSize="12sp"
+                        android:textColor="@android:color/darker_gray"
+                        android:gravity="end"
+                        android:layout_marginBottom="8dp"
+                        android:visibility="gone"/>
+
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
@@ -307,7 +318,7 @@
                     <View
                         android:layout_width="match_parent"
                         android:layout_height="1dp"
-                        android:background="@android:color/darker_gray"
+                        android:background="?android:attr/listDivider"
                         android:layout_marginVertical="8dp" />
 
                     <LinearLayout
@@ -390,6 +401,16 @@
                 android:layout_height="56dp"
                 android:layout_marginTop="16dp"
                 android:text="Record Payment"
+                app:cornerRadius="8dp" />
+
+            <!-- Communication Button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnCommunication"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="16dp"
+                android:text="Communication"
+                android:backgroundTint="#2196F3"
                 app:cornerRadius="8dp" />
 
         </LinearLayout>
