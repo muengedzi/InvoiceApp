@@ -132,7 +132,27 @@ data class InvoiceCommunicationSummary(
     val replied: Int,
 
     @SerializedName("pending_follow_ups")
-    val pendingFollowUps: Int
+    val pendingFollowUps: Int,
+
+    @SerializedName("recent_replies")
+    val recentReplies: List<RecentCustomerReply> = emptyList()
+)
+
+data class RecentCustomerReply(
+    @SerializedName("invoice_id")
+    val invoiceId: Int,
+
+    @SerializedName("invoice_number")
+    val invoiceNumber: String? = null,
+
+    @SerializedName("customer_name")
+    val customerName: String? = null,
+
+    @SerializedName("reply_at")
+    val replyAt: String? = null,
+
+    @SerializedName("reply_body")
+    val replyBody: String? = null
 )
 
 data class CustomerCommunicationThread(
@@ -143,8 +163,28 @@ data class CustomerCommunicationThread(
     val customerName: String,
 
     @SerializedName("customer_email")
-    val customerEmail: String,
+    val customerEmail: String? = null,
+
+    @SerializedName("customer_phone")
+    val customerPhone: String? = null,
 
     @SerializedName("communications")
-    val communications: List<InvoiceCommunication>
+    val communications: List<InvoiceCommunication>,
+
+    @SerializedName("summary")
+    val summary: CommunicationSummary? = null
+)
+
+data class CommunicationSummary(
+    @SerializedName("total_communications")
+    val totalCommunications: Int,
+
+    @SerializedName("emails_sent")
+    val emailsSent: Int,
+
+    @SerializedName("customer_replies")
+    val customerReplies: Int,
+
+    @SerializedName("response_rate")
+    val responseRate: Double
 )

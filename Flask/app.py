@@ -12,11 +12,15 @@ import calendar as month_calendar
 import bcrypt
 import secrets
 import smtplib
+import imaplib
 import json
 import pdfkit
 from datetime import datetime, timedelta
 from functools import wraps
 from pathlib import Path
+from email import message_from_bytes
+from email.header import decode_header
+from email.utils import parseaddr, parsedate_to_datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
@@ -98,6 +102,9 @@ SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
 EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
+IMAP_SERVER = os.getenv("IMAP_SERVER", "imap.gmail.com")
+IMAP_PORT = int(os.getenv("IMAP_PORT", "993"))
+INBOUND_WEBHOOK_SECRET = os.getenv("INBOUND_WEBHOOK_SECRET", "")
 
 # ============================================
 # FLASK-LOGIN SETUP
@@ -369,6 +376,45 @@ def ensure_invoice_recurring_columns(cursor):
             ALTER TABLE dbo.invoices ADD tax_type NVARCHAR(20) NOT NULL CONSTRAINT DF_invoices_tax_type DEFAULT 'exclusive'
     """)
 
+def ensure_customer_company_columns(cursor):
+    cursor.execute("""
+        IF COL_LENGTH('dbo.customers', 'is_company') IS NULL
+            ALTER TABLE dbo.customers ADD is_company BIT NOT NULL CONSTRAINT DF_customers_is_company DEFAULT 0
+        IF COL_LENGTH('dbo.customers', 'company_registration_number') IS NULL
+            ALTER TABLE dbo.customers ADD company_registration_number NVARCHAR(100) NULL
+        IF COL_LENGTH('dbo.customers', 'vat_registered') IS NULL
+            ALTER TABLE dbo.customers ADD vat_registered BIT NOT NULL CONSTRAINT DF_customers_vat_registered DEFAULT 0
+        IF COL_LENGTH('dbo.customers', 'vat_number') IS NULL
+            ALTER TABLE dbo.customers ADD vat_number NVARCHAR(100) NULL
+        IF COL_LENGTH('dbo.customers', 'company_address') IS NULL
+            ALTER TABLE dbo.customers ADD company_address NVARCHAR(500) NULL
+    """)
+
+def ensure_company_settings_columns(cursor):
+    cursor.execute("""
+        IF COL_LENGTH('dbo.company_settings', 'company_vat_number') IS NULL
+            ALTER TABLE dbo.company_settings ADD company_vat_number NVARCHAR(100) NULL
+    """)
+
+def ensure_email_sync_table(cursor):
+    cursor.execute("""
+        IF OBJECT_ID('dbo.email_sync_log', 'U') IS NULL
+        BEGIN
+            CREATE TABLE dbo.email_sync_log (
+                id INT IDENTITY(1,1) PRIMARY KEY,
+                user_id INT NOT NULL,
+                message_id NVARCHAR(300) NOT NULL,
+                invoice_id INT NULL,
+                communication_id INT NULL,
+                sender_email NVARCHAR(510) NULL,
+                subject NVARCHAR(1000) NULL,
+                received_at DATETIME NULL,
+                processed_at DATETIME NOT NULL DEFAULT GETDATE(),
+                CONSTRAINT UQ_email_sync_log_user_message UNIQUE (user_id, message_id)
+            )
+        END
+    """)
+
 def next_monthly_send_date(day, from_date=None):
     day = max(1, min(int(day or 1), 28))
     base = from_date or datetime.now().date()
@@ -452,22 +498,29 @@ def get_customers():
     
     conn = get_db_connection()
     cursor = conn.cursor()
+    ensure_customer_company_columns(cursor)
+    conn.commit()
     
     query = """
         SELECT id, customer_name, email, phone, address, city, state,
-               postal_code, country, tax_exempt, notes, created_at, updated_at
+               postal_code, country, tax_exempt, is_company,
+               company_registration_number, vat_registered, vat_number,
+               company_address, notes, created_at, updated_at
         FROM customers 
         WHERE user_id = ?
     """
     params = [current_user.id]
     
     if search:
-        query += " AND (customer_name LIKE ? OR email LIKE ? OR phone LIKE ?)"
+        query += """ AND (
+            customer_name LIKE ? OR email LIKE ? OR phone LIKE ? OR
+            company_registration_number LIKE ? OR vat_number LIKE ?
+        )"""
         search_pattern = f"%{search}%"
-        params.extend([search_pattern, search_pattern, search_pattern])
+        params.extend([search_pattern, search_pattern, search_pattern, search_pattern, search_pattern])
     
     count_query = query.replace(
-        "SELECT id, customer_name, email, phone, address, city, state, postal_code, country, tax_exempt, notes, created_at, updated_at",
+        "SELECT id, customer_name, email, phone, address, city, state,\n               postal_code, country, tax_exempt, is_company,\n               company_registration_number, vat_registered, vat_number,\n               company_address, notes, created_at, updated_at",
         "SELECT COUNT(*)"
     )
     cursor.execute(count_query, params)
@@ -502,9 +555,14 @@ def get_customers():
             "postal_code": row[7],
             "country": row[8],
             "tax_exempt": bool(row[9]),
-            "notes": row[10],
-            "created_at": row[11].isoformat() if row[11] else None,
-            "updated_at": row[12].isoformat() if row[12] else None
+            "is_company": bool(row[10]),
+            "company_registration_number": row[11],
+            "vat_registered": bool(row[12]),
+            "vat_number": row[13],
+            "company_address": row[14],
+            "notes": row[15],
+            "created_at": row[16].isoformat() if row[16] else None,
+            "updated_at": row[17].isoformat() if row[17] else None
         })
     
     conn.close()
@@ -523,10 +581,14 @@ def get_customer(customer_id):
     """Get one customer for the logged-in user"""
     conn = get_db_connection()
     cursor = conn.cursor()
+    ensure_customer_company_columns(cursor)
+    conn.commit()
 
     cursor.execute("""
         SELECT id, customer_name, email, phone, address, city, state,
-               postal_code, country, tax_exempt, notes, created_at, updated_at
+               postal_code, country, tax_exempt, is_company,
+               company_registration_number, vat_registered, vat_number,
+               company_address, notes, created_at, updated_at
         FROM customers
         WHERE id = ? AND user_id = ?
     """, (customer_id, current_user.id))
@@ -548,9 +610,14 @@ def get_customer(customer_id):
         "postal_code": row[7],
         "country": row[8],
         "tax_exempt": bool(row[9]),
-        "notes": row[10],
-        "created_at": row[11].isoformat() if row[11] else None,
-        "updated_at": row[12].isoformat() if row[12] else None
+        "is_company": bool(row[10]),
+        "company_registration_number": row[11],
+        "vat_registered": bool(row[12]),
+        "vat_number": row[13],
+        "company_address": row[14],
+        "notes": row[15],
+        "created_at": row[16].isoformat() if row[16] else None,
+        "updated_at": row[17].isoformat() if row[17] else None
     }), 200
 
 @app.route('/api/customers', methods=['POST'])
@@ -567,10 +634,13 @@ def create_customer():
     cursor = conn.cursor()
     
     try:
+        ensure_customer_company_columns(cursor)
         cursor.execute("""
             INSERT INTO customers (user_id, customer_name, email, phone, address, 
-                                 city, state, postal_code, country, tax_exempt, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                 city, state, postal_code, country, tax_exempt,
+                                 is_company, company_registration_number,
+                                 vat_registered, vat_number, company_address, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             current_user.id,
             data['customer_name'],
@@ -582,6 +652,11 @@ def create_customer():
             data.get('postal_code', ''),
             data.get('country', 'USA'),
             1 if data.get('tax_exempt') else 0,
+            1 if data.get('is_company') else 0,
+            data.get('company_registration_number', ''),
+            1 if data.get('vat_registered') else 0,
+            data.get('vat_number', ''),
+            data.get('company_address', ''),
             data.get('notes', '')
         ))
         
@@ -607,6 +682,8 @@ def update_customer(customer_id):
     
     conn = get_db_connection()
     cursor = conn.cursor()
+    ensure_customer_company_columns(cursor)
+    conn.commit()
     
     cursor.execute("SELECT id FROM customers WHERE id = ? AND user_id = ?", 
                    (customer_id, current_user.id))
@@ -619,7 +696,9 @@ def update_customer(customer_id):
             UPDATE customers 
             SET customer_name = ?, email = ?, phone = ?, address = ?,
                 city = ?, state = ?, postal_code = ?, country = ?,
-                tax_exempt = ?, notes = ?, updated_at = GETDATE()
+                tax_exempt = ?, is_company = ?, company_registration_number = ?,
+                vat_registered = ?, vat_number = ?, company_address = ?,
+                notes = ?, updated_at = GETDATE()
             WHERE id = ? AND user_id = ?
         """, (
             data.get('customer_name'),
@@ -631,6 +710,11 @@ def update_customer(customer_id):
             data.get('postal_code', ''),
             data.get('country', 'USA'),
             1 if data.get('tax_exempt') else 0,
+            1 if data.get('is_company') else 0,
+            data.get('company_registration_number', ''),
+            1 if data.get('vat_registered') else 0,
+            data.get('vat_number', ''),
+            data.get('company_address', ''),
             data.get('notes', ''),
             customer_id,
             current_user.id
@@ -786,6 +870,8 @@ def create_invoice_internal(data, status='pending'):
     conn = get_db_connection()
     cursor = conn.cursor()
     ensure_invoice_recurring_columns(cursor)
+    ensure_customer_company_columns(cursor)
+    ensure_company_settings_columns(cursor)
     conn.commit()
     
     cursor.execute("""
@@ -1153,6 +1239,11 @@ def get_invoice_email_payload(invoice_id, user_id=None):
             c.customer_name, c.email as customer_email, c.phone as customer_phone,
             c.address as customer_address, c.city as customer_city, c.state as customer_state,
             c.postal_code as customer_postal_code, c.country as customer_country,
+            c.is_company as customer_is_company,
+            c.company_registration_number as customer_company_registration_number,
+            c.vat_registered as customer_vat_registered,
+            c.vat_number as customer_vat_number,
+            c.company_address as customer_company_address,
             cs.company_name, cs.company_logo_url, cs.company_address, cs.company_phone,
             cs.company_email, cs.company_website, cs.currency_symbol, cs.currency_code,
             cs.tax_rate_default, cs.invoice_notes_default, cs.terms_conditions_default,
@@ -2037,6 +2128,9 @@ def generate_invoice_pdf(invoice_id):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        ensure_customer_company_columns(cursor)
+        ensure_company_settings_columns(cursor)
+        conn.commit()
         
         cursor.execute("""
             SELECT 
@@ -2044,6 +2138,11 @@ def generate_invoice_pdf(invoice_id):
                 c.customer_name, c.email as customer_email, c.phone as customer_phone,
                 c.address as customer_address, c.city as customer_city, c.state as customer_state,
                 c.postal_code as customer_postal_code, c.country as customer_country,
+                c.is_company as customer_is_company,
+                c.company_registration_number as customer_company_registration_number,
+                c.vat_registered as customer_vat_registered,
+                c.vat_number as customer_vat_number,
+                c.company_address as customer_company_address,
                 cs.company_name, cs.company_logo_url, cs.company_address, cs.company_phone,
                 cs.company_email, cs.company_website, cs.currency_symbol, cs.currency_code,
                 cs.tax_rate_default, cs.invoice_notes_default, cs.terms_conditions_default, 
@@ -2173,6 +2272,8 @@ def get_company_settings():
     """Get company settings for the logged-in user"""
     conn = get_db_connection()
     cursor = conn.cursor()
+    ensure_company_settings_columns(cursor)
+    conn.commit()
     
     cursor.execute("""
         SELECT * FROM company_settings WHERE user_id = ?
@@ -2214,13 +2315,15 @@ def update_company_settings():
     
     conn = get_db_connection()
     cursor = conn.cursor()
+    ensure_company_settings_columns(cursor)
+    conn.commit()
     
     update_fields = []
     params = []
     
     updatable_fields = [
         'company_name', 'company_logo_url', 'company_address', 'company_phone',
-        'company_email', 'company_website', 'tax_rate_default', 'currency_symbol',
+        'company_email', 'company_website', 'company_vat_number', 'tax_rate_default', 'currency_symbol',
         'currency_code', 'invoice_prefix', 'estimate_prefix', 'invoice_notes_default',
         'terms_conditions_default', 'footer_text_default', 'payment_terms_default'
     ]
@@ -3355,7 +3458,8 @@ def get_communication_summary():
             SELECT COUNT(DISTINCT ic.invoice_id)
             FROM invoice_communications ic
             JOIN invoices i ON ic.invoice_id = i.id
-            WHERE i.user_id = ? AND ic.customer_replied = 1
+            WHERE i.user_id = ?
+              AND (ic.customer_replied = 1 OR ic.communication_type = 'customer_reply')
         """, (current_user.id,))
         replied = cursor.fetchone()[0] or 0
         
@@ -3367,6 +3471,33 @@ def get_communication_summary():
             WHERE i.user_id = ? AND f.completed = 0 AND f.follow_up_date <= GETDATE()
         """, (current_user.id,))
         pending_follow_ups = cursor.fetchone()[0] or 0
+
+        cursor.execute("""
+            SELECT TOP 5
+                i.id,
+                i.invoice_number,
+                c.customer_name,
+                COALESCE(ic.reply_at, ic.sent_at) as reply_at,
+                COALESCE(ic.reply_body, ic.message_body) as reply_body
+            FROM invoice_communications ic
+            JOIN invoices i ON ic.invoice_id = i.id
+            JOIN customers c ON ic.customer_id = c.id
+            WHERE i.user_id = ?
+              AND (
+                  (ic.customer_replied = 1 AND ic.reply_body IS NOT NULL)
+                  OR ic.communication_type = 'customer_reply'
+              )
+            ORDER BY COALESCE(ic.reply_at, ic.sent_at) DESC
+        """, (current_user.id,))
+        recent_replies = []
+        for row in cursor.fetchall():
+            recent_replies.append({
+                "invoice_id": row[0],
+                "invoice_number": row[1],
+                "customer_name": row[2],
+                "reply_at": row[3].isoformat() if row[3] else None,
+                "reply_body": row[4]
+            })
         
         conn.close()
         
@@ -3374,12 +3505,83 @@ def get_communication_summary():
             "total_sent": total_sent,
             "opened": opened,
             "replied": replied,
-            "pending_follow_ups": pending_follow_ups
+            "pending_follow_ups": pending_follow_ups,
+            "recent_replies": recent_replies
         }), 200
         
     except Exception as e:
         print(f"Error getting summary: {e}")
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/invoices/communications/sync-inbox', methods=['POST'])
+@login_required
+def sync_communications_inbox():
+    """Sync customer email replies from the configured IMAP inbox."""
+    try:
+        data = request.get_json(silent=True) or {}
+        days_back = int(data.get("days_back", 14))
+        limit = int(data.get("limit", 50))
+        result = sync_inbox_for_user(current_user.id, days_back=days_back, limit=limit)
+        return jsonify({
+            "success": True,
+            "message": f"Synced inbox. Matched {result['matched']} customer replies.",
+            **result
+        }), 200
+    except Exception as e:
+        print(f"Error syncing inbox: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/invoices/communications/inbound-webhook', methods=['POST'])
+def inbound_communications_webhook():
+    """Accept inbound reply events from an email provider webhook."""
+    try:
+        if INBOUND_WEBHOOK_SECRET:
+            provided_secret = request.headers.get("X-InvoiceApp-Webhook-Secret") or request.args.get("secret")
+            if provided_secret != INBOUND_WEBHOOK_SECRET:
+                return jsonify({"error": "Unauthorized"}), 401
+
+        data = request.get_json() or {}
+        user_id = data.get("user_id")
+        sender_email = (data.get("from_email") or data.get("sender_email") or "").strip().lower()
+        subject = data.get("subject") or ""
+        body = clean_inbound_reply_body(data.get("text") or data.get("body") or data.get("message") or "")
+        message_id = str(data.get("message_id") or f"webhook-{secrets.token_hex(16)}")[:300]
+
+        if not user_id or not sender_email or not body:
+            return jsonify({"error": "user_id, from_email, and body are required"}), 400
+
+        received_at = datetime.now()
+        if data.get("received_at"):
+            try:
+                received_at = datetime.fromisoformat(str(data["received_at"]).replace("Z", "+00:00")).replace(tzinfo=None)
+            except Exception:
+                received_at = datetime.now()
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        ensure_email_sync_table(cursor)
+        conn.commit()
+
+        if message_already_processed(cursor, user_id, message_id):
+            conn.close()
+            return jsonify({"success": True, "matched": False, "message": "Message already processed"}), 200
+
+        matched = record_inbound_reply(cursor, user_id, message_id, sender_email, subject, body, received_at)
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            "success": True,
+            "matched": matched,
+            "message": "Inbound reply recorded" if matched else "Inbound email stored but no matching invoice communication was found"
+        }), 200
+    except Exception as e:
+        print(f"Error processing inbound webhook: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/invoices/follow-ups/pending', methods=['GET'])
 @login_required
@@ -3454,6 +3656,99 @@ def get_pending_follow_ups():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/invoices/follow-ups/<int:follow_up_id>/mark-sent', methods=['POST'])
+@login_required
+def mark_follow_up_sent(follow_up_id):
+    """Mark a follow-up as sent"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check if follow-up exists and belongs to user's invoice
+        cursor.execute("""
+            SELECT f.id, f.invoice_id, f.message_sent
+            FROM invoice_follow_ups f
+            JOIN invoices i ON f.invoice_id = i.id
+            WHERE f.id = ? AND i.user_id = ?
+        """, (follow_up_id, current_user.id))
+        
+        follow_up = cursor.fetchone()
+        
+        if not follow_up:
+            conn.close()
+            return jsonify({"error": "Follow-up not found"}), 404
+        
+        if follow_up[2]:
+            conn.close()
+            return jsonify({"error": "Follow-up already marked as sent"}), 400
+        
+        # Update follow-up as sent
+        cursor.execute("""
+            UPDATE invoice_follow_ups
+            SET message_sent = 1,
+                message_sent_at = GETDATE(),
+                updated_at = GETDATE()
+            WHERE id = ?
+        """, (follow_up_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "message": "Follow-up marked as sent successfully"
+        }), 200
+        
+    except Exception as e:
+        print(f"Error marking follow-up as sent: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/invoices/follow-ups/<int:follow_up_id>/complete', methods=['POST'])
+@login_required
+def complete_follow_up(follow_up_id):
+    """Mark a follow-up as completed"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check if follow-up exists and belongs to user's invoice
+        cursor.execute("""
+            SELECT f.id, f.invoice_id, f.completed
+            FROM invoice_follow_ups f
+            JOIN invoices i ON f.invoice_id = i.id
+            WHERE f.id = ? AND i.user_id = ?
+        """, (follow_up_id, current_user.id))
+        
+        follow_up = cursor.fetchone()
+        
+        if not follow_up:
+            conn.close()
+            return jsonify({"error": "Follow-up not found"}), 404
+        
+        if follow_up[2]:
+            conn.close()
+            return jsonify({"error": "Follow-up already completed"}), 400
+        
+        # Update follow-up as completed
+        cursor.execute("""
+            UPDATE invoice_follow_ups
+            SET completed = 1,
+                updated_at = GETDATE()
+            WHERE id = ?
+        """, (follow_up_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "message": "Follow-up marked as completed successfully"
+        }), 200
+        
+    except Exception as e:
+        print(f"Error completing follow-up: {e}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/customers/<int:customer_id>/communication-thread', methods=['GET'])
 @login_required
 def get_customer_communication_thread(customer_id):
@@ -3464,7 +3759,9 @@ def get_customer_communication_thread(customer_id):
         
         # Get customer details
         cursor.execute("""
-            SELECT customer_name, email FROM customers WHERE id = ? AND user_id = ?
+            SELECT customer_name, email, phone 
+            FROM customers 
+            WHERE id = ? AND user_id = ?
         """, (customer_id, current_user.id))
         
         customer = cursor.fetchone()
@@ -3472,7 +3769,7 @@ def get_customer_communication_thread(customer_id):
             conn.close()
             return jsonify({"error": "Customer not found"}), 404
         
-        # Get all communications
+        # Get all communications for this customer
         cursor.execute("""
             SELECT 
                 ic.id,
@@ -3483,8 +3780,12 @@ def get_customer_communication_thread(customer_id):
                 ic.message_body,
                 ic.sent_at,
                 ic.is_read_by_customer,
+                ic.read_at,
                 ic.customer_replied,
-                ic.reply_body
+                ic.reply_at,
+                ic.reply_body,
+                i.total_amount,
+                i.status as invoice_status
             FROM invoice_communications ic
             JOIN invoices i ON ic.invoice_id = i.id
             WHERE ic.customer_id = ? AND i.user_id = ?
@@ -3497,26 +3798,47 @@ def get_customer_communication_thread(customer_id):
                 "id": row[0],
                 "invoice_id": row[1],
                 "invoice_number": row[2],
+                "customer_id": customer_id,
+                "customer_name": customer[0],
+                "customer_email": customer[1],
                 "communication_type": row[3],
                 "subject": row[4],
                 "message_body": row[5],
                 "sent_at": row[6].isoformat() if row[6] else None,
                 "is_read_by_customer": bool(row[7]),
-                "customer_replied": bool(row[8]),
-                "reply_body": row[9]
+                "read_at": row[8].isoformat() if row[8] else None,
+                "customer_replied": bool(row[9]),
+                "reply_at": row[10].isoformat() if row[10] else None,
+                "reply_body": row[11],
+                "invoice_amount": float(row[12]) if row[12] else 0,
+                "invoice_status": row[13]
             })
         
         conn.close()
+        
+        # Calculate summary statistics
+        total_communications = len(communications)
+        emails_sent = sum(1 for c in communications if c["communication_type"] in ["sent", "follow_up"])
+        customer_replies = sum(1 for c in communications if c["customer_replied"] or c["communication_type"] == "customer_reply")
         
         return jsonify({
             "customer_id": customer_id,
             "customer_name": customer[0],
             "customer_email": customer[1],
-            "communications": communications
+            "customer_phone": customer[2],
+            "communications": communications,
+            "summary": {
+                "total_communications": total_communications,
+                "emails_sent": emails_sent,
+                "customer_replies": customer_replies,
+                "response_rate": round((customer_replies / emails_sent * 100) if emails_sent > 0 else 0, 1)
+            }
         }), 200
         
     except Exception as e:
         print(f"Error getting customer thread: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 def send_customer_email_message(to_email, to_name, subject, body, invoice_number=None, invoice_amount=None, invoice_status=None, is_reply=False):
@@ -3586,6 +3908,209 @@ def send_customer_email_message(to_email, to_name, subject, body, invoice_number
         import traceback
         traceback.print_exc()
         return False
+
+def decode_mime_header(value):
+    if not value:
+        return ""
+    parts = []
+    for text, encoding in decode_header(value):
+        if isinstance(text, bytes):
+            parts.append(text.decode(encoding or "utf-8", errors="replace"))
+        else:
+            parts.append(text)
+    return "".join(parts).strip()
+
+def get_email_text_body(message):
+    if message.is_multipart():
+        for part in message.walk():
+            content_type = part.get_content_type()
+            content_disposition = str(part.get("Content-Disposition") or "")
+            if content_type == "text/plain" and "attachment" not in content_disposition:
+                payload = part.get_payload(decode=True)
+                if payload:
+                    return payload.decode(part.get_content_charset() or "utf-8", errors="replace")
+        for part in message.walk():
+            if part.get_content_type() == "text/html":
+                payload = part.get_payload(decode=True)
+                if payload:
+                    html = payload.decode(part.get_content_charset() or "utf-8", errors="replace")
+                    return re.sub(r"<[^>]+>", " ", html)
+
+    payload = message.get_payload(decode=True)
+    if payload:
+        return payload.decode(message.get_content_charset() or "utf-8", errors="replace")
+    return str(message.get_payload() or "")
+
+def clean_inbound_reply_body(body):
+    body = re.sub(r"\r\n?", "\n", body or "").strip()
+    cut_patterns = [
+        r"\nOn .+ wrote:\s*$",
+        r"\n-{2,}\s*Original Message\s*-{2,}",
+        r"\nFrom:\s.+\nSent:\s.+\nTo:\s.+",
+        r"\n> .+"
+    ]
+    cut_index = len(body)
+    for pattern in cut_patterns:
+        match = re.search(pattern, body, flags=re.IGNORECASE | re.DOTALL)
+        if match:
+            cut_index = min(cut_index, match.start())
+    return body[:cut_index].strip()[:4000]
+
+def message_already_processed(cursor, user_id, message_id):
+    message_id = str(message_id or "")[:300]
+    cursor.execute(
+        "SELECT id FROM email_sync_log WHERE user_id = ? AND message_id = ?",
+        (user_id, message_id)
+    )
+    return cursor.fetchone() is not None
+
+def find_matching_communication(cursor, user_id, sender_email, subject):
+    sender_email = (sender_email or "").lower()
+    subject_normalized = re.sub(r"^(re|fw|fwd):\s*", "", subject or "", flags=re.IGNORECASE).strip().lower()
+    invoice_number_match = re.search(r"([A-Z]{2,}[- ]?\d{3,}|\d{4,})", subject or "", flags=re.IGNORECASE)
+    invoice_number_token = invoice_number_match.group(1).replace(" ", "-").lower() if invoice_number_match else ""
+
+    cursor.execute("""
+        SELECT TOP 50
+            ic.id,
+            ic.invoice_id,
+            ic.customer_id,
+            ic.subject,
+            i.invoice_number
+        FROM invoice_communications ic
+        JOIN invoices i ON ic.invoice_id = i.id
+        JOIN customers c ON ic.customer_id = c.id
+        WHERE i.user_id = ?
+          AND LOWER(c.email) = ?
+          AND ic.communication_type IN ('sent', 'follow_up', 'reply')
+        ORDER BY ic.sent_at DESC
+    """, (user_id, sender_email))
+
+    candidates = cursor.fetchall()
+    if not candidates:
+        return None
+
+    for row in candidates:
+        candidate_subject = re.sub(r"^(re|fw|fwd):\s*", "", row[3] or "", flags=re.IGNORECASE).strip().lower()
+        invoice_number = (row[4] or "").lower()
+        if subject_normalized and (subject_normalized in candidate_subject or candidate_subject in subject_normalized):
+            return row
+        if invoice_number_token and invoice_number and invoice_number_token in invoice_number:
+            return row
+
+    return candidates[0]
+
+def record_inbound_reply(cursor, user_id, message_id, sender_email, subject, body, received_at):
+    message_id = str(message_id or "")[:300]
+    match = find_matching_communication(cursor, user_id, sender_email, subject)
+    if not match:
+        cursor.execute("""
+            INSERT INTO email_sync_log (user_id, message_id, sender_email, subject, received_at)
+            VALUES (?, ?, ?, ?, ?)
+        """, (user_id, message_id, sender_email, subject, received_at))
+        return False
+
+    communication_id, invoice_id, customer_id = match[0], match[1], match[2]
+    cursor.execute("""
+        UPDATE invoice_communications
+        SET customer_replied = 1,
+            reply_at = COALESCE(reply_at, ?),
+            reply_body = CASE
+                WHEN reply_body IS NULL OR LTRIM(RTRIM(reply_body)) = '' THEN ?
+                ELSE reply_body
+            END
+        WHERE id = ?
+    """, (received_at, body, communication_id))
+
+    cursor.execute("""
+        INSERT INTO invoice_communications
+        (invoice_id, customer_id, communication_type, subject, message_body, sent_at, created_by)
+        VALUES (?, ?, 'customer_reply', ?, ?, ?, ?)
+    """, (invoice_id, customer_id, subject, body, received_at, user_id))
+
+    cursor.execute("""
+        UPDATE invoice_follow_ups
+        SET customer_responded = 1,
+            responded_at = COALESCE(responded_at, ?),
+            updated_at = GETDATE()
+        WHERE invoice_id = ?
+    """, (received_at, invoice_id))
+
+    cursor.execute("""
+        INSERT INTO email_sync_log
+        (user_id, message_id, invoice_id, communication_id, sender_email, subject, received_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (user_id, message_id, invoice_id, communication_id, sender_email, subject, received_at))
+    return True
+
+def sync_inbox_for_user(user_id, days_back=14, limit=50):
+    if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
+        raise Exception("Email settings are missing. Configure EMAIL_ADDRESS and EMAIL_PASSWORD in Flask/.env.")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    ensure_email_sync_table(cursor)
+    conn.commit()
+
+    matched = 0
+    processed = 0
+    skipped = 0
+
+    mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
+    try:
+        mail.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+        mail.select("INBOX")
+        since_date = (datetime.now() - timedelta(days=days_back)).strftime("%d-%b-%Y")
+        status, data = mail.search(None, "SINCE", since_date)
+        if status != "OK":
+            raise Exception("Unable to search inbox")
+
+        message_ids = data[0].split()[-limit:]
+        for imap_id in message_ids:
+            status, msg_data = mail.fetch(imap_id, "(RFC822)")
+            if status != "OK" or not msg_data:
+                skipped += 1
+                continue
+
+            raw_message = msg_data[0][1]
+            message = message_from_bytes(raw_message)
+            message_id = (message.get("Message-ID") or f"imap-{imap_id.decode()}").strip()[:300]
+            sender_name, sender_email = parseaddr(message.get("From") or "")
+            sender_email = sender_email.lower()
+            if sender_email == (EMAIL_ADDRESS or "").lower():
+                skipped += 1
+                continue
+            if message_already_processed(cursor, user_id, message_id):
+                skipped += 1
+                continue
+
+            subject = decode_mime_header(message.get("Subject"))
+            try:
+                parsed_date = parsedate_to_datetime(message.get("Date"))
+                received_at = parsed_date.replace(tzinfo=None) if parsed_date else datetime.now()
+            except Exception:
+                received_at = datetime.now()
+
+            body = clean_inbound_reply_body(get_email_text_body(message))
+            if not body:
+                skipped += 1
+                continue
+
+            processed += 1
+            if record_inbound_reply(cursor, user_id, message_id, sender_email, subject, body, received_at):
+                matched += 1
+
+        conn.commit()
+        return {"processed": processed, "matched": matched, "skipped": skipped}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        try:
+            mail.logout()
+        except Exception:
+            pass
+        conn.close()
 
 # ============================================
 # REPORTS

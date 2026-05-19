@@ -49,6 +49,7 @@ class SettingsActivity : AppCompatActivity() {
         binding.etCompanyName.setText(settings.company_name ?: "")
         binding.etCompanyEmail.setText(settings.company_email ?: "")
         binding.etCompanyPhone.setText(settings.company_phone ?: "")
+        binding.etCompanyVatNumber.setText(settings.company_vat_number ?: "")
 
         // Parse the combined address into separate fields
         settings.company_address?.let { fullAddress ->
@@ -138,6 +139,7 @@ class SettingsActivity : AppCompatActivity() {
             company_email = binding.etCompanyEmail.text.toString().trim().ifEmpty { null },
             company_phone = binding.etCompanyPhone.text.toString().trim().ifEmpty { null },
             company_address = combinedAddress.ifEmpty { null },  // Save combined address
+            company_vat_number = binding.etCompanyVatNumber.text.toString().trim().ifEmpty { null },
             tax_rate_default = binding.etTaxRate.text.toString().toDoubleOrNull() ?: 0.0
         )
 
@@ -157,7 +159,7 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     override fun onSupportNavigateUp(): Boolean {
-        onBackPressed()
+        finish()
         return true
     }
 }

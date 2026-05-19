@@ -43,11 +43,12 @@ interface ApiService {
     @GET("/api/invoices")
     suspend fun getInvoices(
         @Query("page") page: Int = 1,
-        @Query("per_page") perPage: Int = 20,
+        @Query("per_page") perPage: Int = 500,
         @Query("status") status: String? = null,
         @Query("customer_id") customerId: Int? = null,
         @Query("date_from") dateFrom: String? = null,
-        @Query("date_to") dateTo: String? = null
+        @Query("date_to") dateTo: String? = null,
+        @Query("search") search: String? = null
     ): Response<InvoiceListResponse>
 
     @GET("/api/invoices/{id}")
@@ -250,6 +251,9 @@ interface ApiService {
 
     @GET("/api/invoices/communications/summary")
     suspend fun getCommunicationSummary(): Response<InvoiceCommunicationSummary>
+
+    @POST("/api/invoices/communications/sync-inbox")
+    suspend fun syncCommunicationInbox(@Body request: Map<String, Int> = emptyMap()): Response<Map<String, Any>>
 
     @GET("/api/invoices/follow-ups/pending")
     suspend fun getPendingFollowUps(): Response<List<InvoiceFollowUp>>

@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
@@ -16,6 +17,8 @@ import com.invoiceapp.utils.SessionManager
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var sessionManager: SessionManager
+    private var currentBottomItemId = R.id.navigation_dashboard
+    private var showingMenuPage = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -26,6 +29,7 @@ class MainActivity : AppCompatActivity() {
 
         setupToolbar()
         setupBottomNavigation()
+        setupBackHandling()
         setupFAB()
         loadFragment(DashboardFragment())
     }
@@ -38,6 +42,9 @@ class MainActivity : AppCompatActivity() {
     private fun setupBottomNavigation() {
         val bottomNavigation = findViewById<BottomNavigationView>(R.id.bottomNavigation)
         bottomNavigation.setOnItemSelectedListener { menuItem ->
+            currentBottomItemId = menuItem.itemId
+            showingMenuPage = false
+            supportActionBar?.setDisplayHomeAsUpEnabled(false)
             when (menuItem.itemId) {
                 R.id.navigation_dashboard -> {
                     loadFragment(DashboardFragment())
@@ -108,6 +115,55 @@ class MainActivity : AppCompatActivity() {
             .commit()
     }
 
+    private fun setupBackHandling() {
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                when {
+                    showingMenuPage -> {
+                        returnToBottomPage()
+                    }
+                    currentBottomItemId != R.id.navigation_dashboard -> {
+                        binding.bottomNavigation.selectedItemId = R.id.navigation_dashboard
+                    }
+                    else -> moveTaskToBack(true)
+                }
+            }
+        })
+    }
+
+    private fun returnToBottomPage() {
+        showingMenuPage = false
+        supportActionBar?.setDisplayHomeAsUpEnabled(false)
+        binding.bottomNavigation.selectedItemId = currentBottomItemId
+        when (currentBottomItemId) {
+            R.id.navigation_dashboard -> {
+                loadFragment(DashboardFragment())
+                supportActionBar?.title = "Dashboard"
+                hideFAB()
+            }
+            R.id.navigation_invoices -> {
+                loadFragment(InvoicesFragment())
+                supportActionBar?.title = "Invoices"
+                showFAB()
+            }
+            R.id.navigation_customers -> {
+                loadFragment(CustomersFragment())
+                supportActionBar?.title = "Customers"
+                showFAB()
+            }
+            R.id.navigation_expenses -> {
+                loadFragment(ExpensesFragment())
+                supportActionBar?.title = "Expenses"
+                showFAB()
+            }
+            R.id.navigation_items -> {
+                loadFragment(ItemsFragment())
+                supportActionBar?.title = "Items"
+                showFAB()
+            }
+        }
+    }
+
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
         menuInflater.inflate(R.menu.main_menu, menu)
         return true
@@ -118,12 +174,16 @@ class MainActivity : AppCompatActivity() {
             R.id.menu_reports -> {
                 loadFragment(ReportsFragment())
                 supportActionBar?.title = "Reports"
+                supportActionBar?.setDisplayHomeAsUpEnabled(true)
+                showingMenuPage = true
                 hideFAB()
                 true
             }
             R.id.menu_communications -> {
                 loadFragment(CommunicationSummaryFragment())
                 supportActionBar?.title = "Communications"
+                supportActionBar?.setDisplayHomeAsUpEnabled(true)
+                showingMenuPage = true
                 hideFAB()
                 true
             }
@@ -133,6 +193,10 @@ class MainActivity : AppCompatActivity() {
             }
             R.id.menu_logout -> {
                 showLogoutConfirmation()
+                true
+            }
+            android.R.id.home -> {
+                returnToBottomPage()
                 true
             }
             else -> super.onOptionsItemSelected(item)

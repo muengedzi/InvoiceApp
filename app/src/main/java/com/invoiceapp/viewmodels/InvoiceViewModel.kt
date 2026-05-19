@@ -13,6 +13,8 @@ import com.invoiceapp.models.PaymentRequest
 import com.invoiceapp.network.ApiResponse
 import com.invoiceapp.network.RetrofitClient
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import java.io.File
 import java.io.FileOutputStream
 
@@ -47,8 +49,27 @@ class InvoiceViewModel : ViewModel() {
     private val _pdfResult = MutableLiveData<ApiResponse<File>>()
     val pdfResult: LiveData<ApiResponse<File>> = _pdfResult
 
-    fun loadInvoices(page: Int = 1, status: String? = null) {
-        loadInvoicesWithFilters(page, status, null, null, null)
+    // Pagination state
+    private var currentPage = 1
+    private var isLoadingMore = false
+    private var hasMorePages = true
+    private var allInvoices = mutableListOf<Invoice>()
+    private var totalInvoices = 0
+
+    // Cache for invoice details to prevent redundant network calls
+    private val invoiceDetailCache = mutableMapOf<Int, Invoice>()
+
+    fun loadInvoices(page: Int = 1, status: String? = null, resetList: Boolean = true) {
+        if (resetList) {
+            // Reset pagination state
+            currentPage = 1
+            hasMorePages = true
+            isLoadingMore = false
+            allInvoices.clear()
+        }
+
+        _invoices.value = ApiResponse.Loading(true)
+        loadInvoicesWithFilters(page, status, null, null, null, null, resetList)
     }
 
     fun loadInvoicesWithFilters(
@@ -56,38 +77,112 @@ class InvoiceViewModel : ViewModel() {
         status: String? = null,
         customerId: Int? = null,
         dateFrom: String? = null,
-        dateTo: String? = null
+        dateTo: String? = null,
+        search: String? = null,
+        resetList: Boolean = true
     ) {
-        _invoices.value = ApiResponse.Loading(true)
+        if (resetList) {
+            currentPage = page
+            allInvoices.clear()
+            hasMorePages = true
+            isLoadingMore = false
+            _invoices.value = ApiResponse.Loading(true)
+        } else if (isLoadingMore) {
+            return // Already loading more
+        }
+
         viewModelScope.launch {
             try {
                 val response = RetrofitClient.apiService.getInvoices(
                     page = page,
-                    perPage = 20,
+                    perPage = 500, // Increased to load more invoices at once
                     status = status,
                     customerId = customerId,
                     dateFrom = dateFrom,
-                    dateTo = dateTo
+                    dateTo = dateTo,
+                    search = search
                 )
+
                 if (response.isSuccessful && response.body() != null) {
                     val invoiceResponse = response.body()!!
-                    _invoices.value = ApiResponse.Success(invoiceResponse.invoices ?: emptyList())
+                    val newInvoices = invoiceResponse.invoices ?: emptyList()
+                    totalInvoices = invoiceResponse.total
+                    hasMorePages = newInvoices.size == 500 || allInvoices.size + newInvoices.size < totalInvoices
+
+                    if (resetList) {
+                        allInvoices.clear()
+                        allInvoices.addAll(newInvoices)
+                    } else {
+                        allInvoices.addAll(newInvoices)
+                    }
+
+                    _invoices.value = ApiResponse.Success(allInvoices.toList())
+                    currentPage = page
+                    isLoadingMore = false
                 } else {
                     _invoices.value = ApiResponse.Error("Failed to load invoices")
                 }
             } catch (e: Exception) {
                 _invoices.value = ApiResponse.Error(e.message ?: "Network error")
+                isLoadingMore = false
             }
         }
     }
 
-    fun getInvoiceDetail(invoiceId: Int) {
+    // Load more invoices for pagination (scroll to load)
+    fun loadMoreInvoices(status: String? = null, customerId: Int? = null, search: String? = null) {
+        if (!hasMorePages || isLoadingMore) return
+
+        isLoadingMore = true
+        val nextPage = currentPage + 1
+
+        viewModelScope.launch {
+            try {
+                val response = RetrofitClient.apiService.getInvoices(
+                    page = nextPage,
+                    perPage = 500,
+                    status = status,
+                    customerId = customerId,
+                    search = search
+                )
+
+                if (response.isSuccessful && response.body() != null) {
+                    val invoiceResponse = response.body()!!
+                    val newInvoices = invoiceResponse.invoices ?: emptyList()
+
+                    if (newInvoices.isNotEmpty()) {
+                        allInvoices.addAll(newInvoices)
+                        _invoices.value = ApiResponse.Success(allInvoices.toList())
+                        currentPage = nextPage
+                    }
+
+                    hasMorePages = newInvoices.size == 500 && allInvoices.size < totalInvoices
+                }
+            } catch (e: Exception) {
+                // Don't show error for pagination failures to avoid disrupting UX
+                e.printStackTrace()
+            } finally {
+                isLoadingMore = false
+            }
+        }
+    }
+
+    fun getInvoiceDetail(invoiceId: Int, useCache: Boolean = true) {
+        // Check cache first for performance
+        if (useCache && invoiceDetailCache.containsKey(invoiceId)) {
+            _invoiceDetail.value = ApiResponse.Success(invoiceDetailCache[invoiceId]!!)
+            return
+        }
+
         _invoiceDetail.value = ApiResponse.Loading(true)
         viewModelScope.launch {
             try {
                 val response = RetrofitClient.apiService.getInvoice(invoiceId)
                 if (response.isSuccessful && response.body() != null) {
-                    _invoiceDetail.value = ApiResponse.Success(response.body()!!)
+                    val invoice = response.body()!!
+                    // Cache the result
+                    invoiceDetailCache[invoiceId] = invoice
+                    _invoiceDetail.value = ApiResponse.Success(invoice)
                 } else {
                     _invoiceDetail.value = ApiResponse.Error("Failed to load invoice details")
                 }
@@ -104,6 +199,8 @@ class InvoiceViewModel : ViewModel() {
                 val response = RetrofitClient.apiService.createInvoice(request)
                 if (response.isSuccessful && response.body() != null) {
                     _createResult.value = ApiResponse.Success(response.body()!!)
+                    // Clear cache after creating new invoice
+                    clearCache()
                 } else {
                     _createResult.value = ApiResponse.Error("Failed to create invoice")
                 }
@@ -120,6 +217,7 @@ class InvoiceViewModel : ViewModel() {
                 val response = RetrofitClient.apiService.createInvoiceAsDraft(request)
                 if (response.isSuccessful && response.body() != null) {
                     _createResult.value = ApiResponse.Success(response.body()!!)
+                    clearCache()
                 } else {
                     _createResult.value = ApiResponse.Error("Failed to save draft")
                 }
@@ -136,6 +234,8 @@ class InvoiceViewModel : ViewModel() {
                 val response = RetrofitClient.apiService.updateInvoice(id, request)
                 if (response.isSuccessful && response.body() != null) {
                     _createResult.value = ApiResponse.Success(response.body()!!)
+                    // Invalidate cache for this invoice
+                    invoiceDetailCache.remove(id)
                 } else {
                     _createResult.value = ApiResponse.Error("Failed to update invoice: ${response.message()}")
                 }
@@ -152,6 +252,7 @@ class InvoiceViewModel : ViewModel() {
                 val response = RetrofitClient.apiService.updateInvoiceAsDraft(id, request)
                 if (response.isSuccessful && response.body() != null) {
                     _createResult.value = ApiResponse.Success(response.body()!!)
+                    invoiceDetailCache.remove(id)
                 } else {
                     _createResult.value = ApiResponse.Error("Failed to update draft")
                 }
@@ -168,6 +269,7 @@ class InvoiceViewModel : ViewModel() {
                 val response = RetrofitClient.apiService.sendInvoice(id, request ?: emptyMap<String, Any>())
                 if (response.isSuccessful && response.body() != null) {
                     _sendResult.value = ApiResponse.Success(response.body()!!)
+                    invoiceDetailCache.remove(id)
                 } else {
                     _sendResult.value = ApiResponse.Error("Failed to send invoice")
                 }
@@ -184,6 +286,10 @@ class InvoiceViewModel : ViewModel() {
                 val response = RetrofitClient.apiService.deleteInvoice(id)
                 if (response.isSuccessful && response.body() != null) {
                     _createResult.value = ApiResponse.Success(response.body()!!)
+                    // Remove from cache and list
+                    invoiceDetailCache.remove(id)
+                    allInvoices.removeAll { it.id == id }
+                    _invoices.value = ApiResponse.Success(allInvoices.toList())
                 } else {
                     _createResult.value = ApiResponse.Error("Failed to delete invoice")
                 }
@@ -200,8 +306,9 @@ class InvoiceViewModel : ViewModel() {
                 val response = RetrofitClient.apiService.recordPayment(invoiceId, request)
                 if (response.isSuccessful && response.body() != null) {
                     _paymentResult.value = ApiResponse.Success(response.body()!!)
-                    // Refresh invoice details after payment
-                    getInvoiceDetail(invoiceId)
+                    // Invalidate cache to refresh data
+                    invoiceDetailCache.remove(invoiceId)
+                    getInvoiceDetail(invoiceId, useCache = false)
                 } else {
                     _paymentResult.value = ApiResponse.Error("Failed to record payment")
                 }
@@ -259,7 +366,12 @@ class InvoiceViewModel : ViewModel() {
         }
     }
 
-    fun getInvoicePayments(invoiceId: Int) {
+    fun getInvoicePayments(invoiceId: Int, refresh: Boolean = false) {
+        // If not refreshing and we have cached payments, don't reload
+        if (!refresh && _payments.value is ApiResponse.Success) {
+            return
+        }
+
         _payments.value = ApiResponse.Loading(true)
         viewModelScope.launch {
             try {
@@ -298,5 +410,49 @@ class InvoiceViewModel : ViewModel() {
                 _pdfResult.value = ApiResponse.Error(e.message ?: "Network error")
             }
         }
+    }
+
+    // Helper method to refresh invoices list
+    fun refreshInvoices(status: String? = null, customerId: Int? = null, search: String? = null) {
+        loadInvoicesWithFilters(1, status, customerId, null, null, search, resetList = true)
+    }
+
+    // Clear cache when logging out or when data becomes stale
+    fun clearCache() {
+        invoiceDetailCache.clear()
+    }
+
+    // Get current state for UI
+    fun hasMoreItems(): Boolean = hasMorePages
+    fun isLoadingMore(): Boolean = isLoadingMore
+    fun getTotalInvoices(): Int = totalInvoices
+    fun getLoadedInvoiceCount(): Int = allInvoices.size
+
+    // Load all invoices (best for reports/export)
+    suspend fun loadAllInvoices(): List<Invoice> = coroutineScope {
+        val allResults = mutableListOf<Invoice>()
+        var currentPage = 1
+        var hasMore = true
+
+        while (hasMore) {
+            try {
+                val response = RetrofitClient.apiService.getInvoices(
+                    page = currentPage,
+                    perPage = 500
+                )
+                if (response.isSuccessful && response.body() != null) {
+                    val invoices = response.body()!!.invoices ?: emptyList()
+                    allResults.addAll(invoices)
+                    hasMore = invoices.size == 500
+                    currentPage++
+                } else {
+                    hasMore = false
+                }
+            } catch (e: Exception) {
+                hasMore = false
+            }
+        }
+
+        allResults
     }
 }

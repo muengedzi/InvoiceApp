@@ -1,13 +1,18 @@
 package com.invoiceapp.activities
 
 import android.app.DatePickerDialog
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
 import android.content.Intent
 import android.text.Editable
 import android.text.TextWatcher
 import android.os.Bundle
 import android.view.View
+import android.view.animation.LinearInterpolator
 import android.widget.ArrayAdapter
 import android.widget.AutoCompleteTextView
+import android.widget.ListView
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -22,6 +27,7 @@ import com.invoiceapp.utils.SessionManager
 import androidx.lifecycle.ViewModelProvider
 import com.invoiceapp.network.ApiResponse
 import com.invoiceapp.viewmodels.InvoiceViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
@@ -41,6 +47,7 @@ class CreateInvoiceActivity : AppCompatActivity() {
     private lateinit var sessionManager: SessionManager
     private var customersList = listOf<Customer>()
     private var shouldRefreshCustomers = false
+    private var loadingAnimator: ObjectAnimator? = null
 
     // Recurring frequency options
     private lateinit var frequencyAdapter: ArrayAdapter<String>
@@ -291,9 +298,7 @@ class CreateInvoiceActivity : AppCompatActivity() {
                 is ApiResponse.Loading -> showLoading(true)
                 is ApiResponse.Success -> {
                     showLoading(false)
-                    Toast.makeText(this, "Invoice saved successfully!", Toast.LENGTH_SHORT).show()
-                    setResult(RESULT_OK)
-                    finish()
+                    showSuccessAndFinish("Invoice saved successfully!")
                 }
                 is ApiResponse.Error -> {
                     showLoading(false)
@@ -307,9 +312,7 @@ class CreateInvoiceActivity : AppCompatActivity() {
                 is ApiResponse.Loading -> showLoading(true)
                 is ApiResponse.Success -> {
                     showLoading(false)
-                    Toast.makeText(this, "Invoice sent successfully!", Toast.LENGTH_SHORT).show()
-                    setResult(RESULT_OK)
-                    finish()
+                    showSuccessAndFinish("Invoice sent successfully!")
                 }
                 is ApiResponse.Error -> {
                     showLoading(false)
@@ -440,20 +443,81 @@ class CreateInvoiceActivity : AppCompatActivity() {
             return
         }
 
-        val customerNames = customersList.map { "${it.customer_name} - ${it.email ?: it.phone ?: "No contact"}" }
+        val dialogView = layoutInflater.inflate(R.layout.dialog_select_customer, null)
+        val searchInput = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.etCustomerSearch)
+        val customerListView = dialogView.findViewById<ListView>(R.id.listCustomers)
+        val emptyView = dialogView.findViewById<TextView>(R.id.tvCustomerEmpty)
+        var filteredCustomers = customersList
+        val adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, filteredCustomers.map(::formatCustomerChoice))
+        customerListView.adapter = adapter
 
-        AlertDialog.Builder(this)
-            .setTitle("Select Customer")
-            .setItems(customerNames.toTypedArray()) { _, which ->
-                selectedCustomer = customersList[which]
-                binding.tvSelectedCustomer.text = selectedCustomer?.customer_name
-                binding.tvSelectedCustomerDetails.text = "${selectedCustomer?.email ?: ""}\n${selectedCustomer?.phone ?: ""}"
+        fun updateFilteredCustomers(query: String) {
+            val normalizedQuery = query.trim().lowercase()
+            filteredCustomers = if (normalizedQuery.isBlank()) {
+                customersList
+            } else {
+                customersList.filter { customer ->
+                    listOfNotNull(
+                        customer.customer_name,
+                        customer.email,
+                        customer.phone,
+                        customer.address,
+                        customer.city
+                    ).any { it.lowercase().contains(normalizedQuery) }
+                }
             }
+
+            adapter.clear()
+            adapter.addAll(filteredCustomers.map(::formatCustomerChoice))
+            adapter.notifyDataSetChanged()
+            emptyView.visibility = if (filteredCustomers.isEmpty()) View.VISIBLE else View.GONE
+            customerListView.visibility = if (filteredCustomers.isEmpty()) View.GONE else View.VISIBLE
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Select Customer")
+            .setView(dialogView)
             .setPositiveButton("Add Customer") { _, _ ->
                 openAddCustomer()
             }
             .setNegativeButton("Cancel", null)
-            .show()
+            .create()
+
+        customerListView.setOnItemClickListener { _, _, position, _ ->
+            selectCustomer(filteredCustomers[position])
+            dialog.dismiss()
+        }
+
+        searchInput.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+            override fun afterTextChanged(s: Editable?) {
+                updateFilteredCustomers(s?.toString().orEmpty())
+            }
+        })
+
+        dialog.setOnShowListener {
+            searchInput.requestFocus()
+        }
+        dialog.show()
+    }
+
+    private fun formatCustomerChoice(customer: Customer): String {
+        val contact = customer.email.ifBlank { customer.phone ?: "No contact" }
+        return "${customer.customer_name}\n$contact"
+    }
+
+    private fun selectCustomer(customer: Customer) {
+        selectedCustomer = customer
+        binding.tvSelectedCustomer.text = customer.customer_name
+        binding.tvSelectedCustomerDetails.text = "${customer.email}\n${customer.phone ?: ""}"
+        binding.tvSelectedCustomer.animate()
+            .alpha(0.45f)
+            .setDuration(90)
+            .withEndAction {
+                binding.tvSelectedCustomer.animate().alpha(1f).setDuration(160).start()
+            }
+            .start()
     }
 
     private fun showAddCustomerPrompt() {
@@ -840,14 +904,52 @@ class CreateInvoiceActivity : AppCompatActivity() {
 
     private fun showLoading(show: Boolean) {
         binding.progressBar.visibility = if (show) View.VISIBLE else View.GONE
+        if (show) {
+            loadingAnimator?.cancel()
+            loadingAnimator = ObjectAnimator.ofFloat(binding.progressBar, View.ROTATION, 0f, 360f).apply {
+                duration = 900
+                repeatCount = ValueAnimator.INFINITE
+                interpolator = LinearInterpolator()
+                start()
+            }
+        } else {
+            loadingAnimator?.cancel()
+            binding.progressBar.rotation = 0f
+        }
         binding.btnCreateInvoice.isEnabled = !show
         binding.btnSendInvoice.isEnabled = !show
         binding.btnSaveAsDraft.isEnabled = !show
         binding.btnCancel.isEnabled = !show
     }
 
+    private fun showSuccessAndFinish(message: String) {
+        setResult(RESULT_OK)
+        val primaryButton = if (binding.btnSendInvoice.visibility == View.VISIBLE) binding.btnSendInvoice else binding.btnCreateInvoice
+        primaryButton.text = "Success"
+        primaryButton.setBackgroundColor(getColor(R.color.success))
+        primaryButton.animate()
+            .scaleX(1.04f)
+            .scaleY(1.04f)
+            .alpha(0.95f)
+            .setDuration(160)
+            .withEndAction {
+                primaryButton.animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .alpha(1f)
+                    .setDuration(180)
+                    .start()
+            }
+            .start()
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            delay(450)
+            finish()
+        }
+    }
+
     override fun onSupportNavigateUp(): Boolean {
-        onBackPressed()
+        finish()
         return true
     }
 }

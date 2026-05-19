@@ -5,6 +5,8 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.AnimationUtils
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.cardview.widget.CardView
@@ -13,6 +15,7 @@ import androidx.lifecycle.lifecycleScope
 import com.invoiceapp.R
 import com.invoiceapp.activities.MainActivity
 import com.invoiceapp.activities.PendingFollowUpsActivity
+import com.invoiceapp.models.RecentCustomerReply
 import com.invoiceapp.network.RetrofitClient
 import com.invoiceapp.utils.SessionManager
 import kotlinx.coroutines.launch
@@ -28,6 +31,11 @@ class CommunicationSummaryFragment : Fragment() {
     private lateinit var tvOpened: TextView
     private lateinit var tvReplied: TextView
     private lateinit var tvPendingFollowUps: TextView
+    private lateinit var recentRepliesContainer: LinearLayout
+    private lateinit var tvNoRecentReplies: TextView
+    private lateinit var btnSyncInbox: View
+    private lateinit var cardSyncProcessing: View
+    private lateinit var tvSyncProcessing: TextView
     private lateinit var progressBar: View
 
     override fun onCreateView(
@@ -50,8 +58,16 @@ class CommunicationSummaryFragment : Fragment() {
         tvOpened = view.findViewById(R.id.tvOpened)
         tvReplied = view.findViewById(R.id.tvReplied)
         tvPendingFollowUps = view.findViewById(R.id.tvPendingFollowUps)
+        recentRepliesContainer = view.findViewById(R.id.recentRepliesContainer)
+        tvNoRecentReplies = view.findViewById(R.id.tvNoRecentReplies)
+        btnSyncInbox = view.findViewById(R.id.btnSyncInbox)
+        cardSyncProcessing = view.findViewById(R.id.cardSyncProcessing)
+        tvSyncProcessing = view.findViewById(R.id.tvSyncProcessing)
         progressBar = view.findViewById(R.id.progressBar)
 
+        btnSyncInbox.setOnClickListener {
+            syncInboxReplies()
+        }
         loadCommunicationSummary()
     }
 
@@ -67,6 +83,8 @@ class CommunicationSummaryFragment : Fragment() {
                     tvOpened.text = summary.opened.toString()
                     tvReplied.text = summary.replied.toString()
                     tvPendingFollowUps.text = summary.pendingFollowUps.toString()
+                    renderRecentReplies(summary.recentReplies)
+                    view?.startAnimation(AnimationUtils.loadAnimation(requireContext(), R.anim.fade_in_up))
 
                     // Set click listeners to navigate to appropriate screens
                     cardTotalSent.setOnClickListener {
@@ -110,5 +128,63 @@ class CommunicationSummaryFragment : Fragment() {
         // Launch PendingFollowUpsActivity directly
         val intent = Intent(requireContext(), PendingFollowUpsActivity::class.java)
         startActivity(intent)
+    }
+
+    private fun renderRecentReplies(replies: List<RecentCustomerReply>) {
+        recentRepliesContainer.removeAllViews()
+        tvNoRecentReplies.visibility = if (replies.isEmpty()) View.VISIBLE else View.GONE
+
+        replies.forEach { reply ->
+            val card = layoutInflater.inflate(
+                R.layout.item_recent_communication_reply,
+                recentRepliesContainer,
+                false
+            )
+            card.findViewById<TextView>(R.id.tvReplyCustomer).text = reply.customerName ?: "Customer"
+            card.findViewById<TextView>(R.id.tvReplyInvoice).text = reply.invoiceNumber ?: "Invoice"
+            card.findViewById<TextView>(R.id.tvReplyBody).text = reply.replyBody ?: ""
+            card.setOnClickListener {
+                val intent = Intent(requireContext(), com.invoiceapp.activities.InvoiceDetailActivity::class.java)
+                intent.putExtra("invoice_id", reply.invoiceId)
+                startActivity(intent)
+            }
+            recentRepliesContainer.addView(card)
+        }
+    }
+
+    private fun syncInboxReplies() {
+        setSyncProcessing(true, "Checking inbox for replies...")
+        lifecycleScope.launch {
+            try {
+                val response = RetrofitClient.apiService.syncCommunicationInbox(
+                    mapOf("days_back" to 14, "limit" to 50)
+                )
+                if (response.isSuccessful && response.body() != null) {
+                    val body = response.body()!!
+                    val matched = (body["matched"] as? Double)?.toInt()
+                        ?: (body["matched"] as? Int)
+                        ?: 0
+                    setSyncProcessing(true, "Synced $matched customer replies")
+                    loadCommunicationSummary()
+                } else {
+                    Toast.makeText(requireContext(), "Failed to sync inbox", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(requireContext(), "Inbox sync error: ${e.message}", Toast.LENGTH_SHORT).show()
+            } finally {
+                cardSyncProcessing.postDelayed({
+                    setSyncProcessing(false)
+                }, 650)
+            }
+        }
+    }
+
+    private fun setSyncProcessing(show: Boolean, message: String = "") {
+        cardSyncProcessing.visibility = if (show) View.VISIBLE else View.GONE
+        btnSyncInbox.isEnabled = !show
+        if (show) {
+            tvSyncProcessing.text = message
+            cardSyncProcessing.startAnimation(AnimationUtils.loadAnimation(requireContext(), R.anim.fade_in_up))
+        }
     }
 }

@@ -2,6 +2,7 @@ package com.invoiceapp.activities
 
 import android.os.Bundle
 import android.view.View
+import android.view.animation.AnimationUtils
 import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -16,9 +17,8 @@ import com.invoiceapp.models.SendInvoiceEmailRequest
 import com.invoiceapp.models.SendReplyRequest
 import com.invoiceapp.network.RetrofitClient
 import com.invoiceapp.utils.SessionManager
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.*
 
 class CommunicationActivity : AppCompatActivity() {
 
@@ -88,6 +88,7 @@ class CommunicationActivity : AppCompatActivity() {
                     } else {
                         binding.tvEmptyView.visibility = View.GONE
                         binding.recyclerView.visibility = View.VISIBLE
+                        binding.recyclerView.startAnimation(AnimationUtils.loadAnimation(this@CommunicationActivity, R.anim.fade_in_up))
                     }
                 }
             } catch (e: Exception) {
@@ -174,6 +175,7 @@ class CommunicationActivity : AppCompatActivity() {
     private fun sendEmail(subject: String, message: String, isFollowUp: Boolean) {
         lifecycleScope.launch {
             try {
+                setProcessing(true, if (isFollowUp) "Sending follow-up..." else "Sending message...")
                 val request = SendInvoiceEmailRequest(
                     invoiceId = invoiceId,
                     subject = subject,
@@ -183,12 +185,16 @@ class CommunicationActivity : AppCompatActivity() {
                 val response = RetrofitClient.apiService.sendInvoiceEmail(request)
                 if (response.isSuccessful && response.body() != null) {
                     Toast.makeText(this@CommunicationActivity, "Email sent successfully", Toast.LENGTH_SHORT).show()
+                    showProcessingSuccess(if (isFollowUp) "Follow-up sent" else "Message sent")
+                    delay(450)
                     loadCommunications()
                 } else {
                     Toast.makeText(this@CommunicationActivity, "Failed to send email", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 Toast.makeText(this@CommunicationActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            } finally {
+                setProcessing(false)
             }
         }
     }
@@ -196,6 +202,7 @@ class CommunicationActivity : AppCompatActivity() {
     private fun sendReply(communicationId: Int, subject: String, message: String) {
         lifecycleScope.launch {
             try {
+                setProcessing(true, "Sending reply...")
                 val request = SendReplyRequest(
                     communicationId = communicationId,
                     subject = subject,
@@ -204,18 +211,47 @@ class CommunicationActivity : AppCompatActivity() {
                 val response = RetrofitClient.apiService.sendReply(request)
                 if (response.isSuccessful && response.body() != null) {
                     Toast.makeText(this@CommunicationActivity, "Reply sent successfully", Toast.LENGTH_SHORT).show()
+                    showProcessingSuccess("Reply sent")
+                    delay(450)
                     loadCommunications()
                 } else {
                     Toast.makeText(this@CommunicationActivity, "Failed to send reply", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 Toast.makeText(this@CommunicationActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            } finally {
+                setProcessing(false)
             }
         }
     }
 
+    private fun setProcessing(show: Boolean, message: String = "") {
+        binding.cardProcessing.visibility = if (show) View.VISIBLE else View.GONE
+        if (show) {
+            binding.tvProcessingMessage.text = message
+            binding.cardProcessing.alpha = 0f
+            binding.cardProcessing.translationY = -12f
+            binding.cardProcessing.animate().alpha(1f).translationY(0f).setDuration(180).start()
+        }
+        binding.btnSendMessage.isEnabled = !show
+        binding.btnSendFollowUp.isEnabled = !show
+    }
+
+    private fun showProcessingSuccess(message: String) {
+        binding.cardProcessing.visibility = View.VISIBLE
+        binding.tvProcessingMessage.text = message
+        binding.cardProcessing.animate()
+            .scaleX(1.02f)
+            .scaleY(1.02f)
+            .setDuration(120)
+            .withEndAction {
+                binding.cardProcessing.animate().scaleX(1f).scaleY(1f).setDuration(140).start()
+            }
+            .start()
+    }
+
     override fun onSupportNavigateUp(): Boolean {
-        onBackPressed()
+        finish()
         return true
     }
 }

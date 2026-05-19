@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginBottom="8dp"
-    app:cardCornerRadius="8dp"
-    app:cardElevation="2dp">
+    app:cardBackgroundColor="@color/surface_card"
+    app:cardCornerRadius="12dp"
+    app:cardElevation="1dp"
+    app:strokeColor="@color/border_soft"
+    app:strokeWidth="1dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -25,6 +28,7 @@
                 android:layout_weight="1"
                 android:text="Sent"
                 android:textSize="12sp"
+                android:textColor="@color/primary"
                 android:textStyle="bold" />
 
             <TextView
@@ -33,7 +37,7 @@
                 android:layout_height="wrap_content"
                 android:text="Jan 01, 2024"
                 android:textSize="10sp"
-                android:textColor="@android:color/darker_gray" />
+                android:textColor="@color/text_secondary" />
 
         </LinearLayout>
 
@@ -43,6 +47,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:text="Subject"
+            android:textColor="@color/text_primary"
             android:textSize="14sp"
             android:textStyle="bold" />
 
@@ -53,14 +58,14 @@
             android:layout_marginTop="4dp"
             android:text="Message"
             android:textSize="12sp"
-            android:textColor="@android:color/darker_gray" />
+            android:textColor="@color/text_secondary" />
 
         <LinearLayout
             android:id="@+id/tvReplyIndicator"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:background="#E8F5E9"
+            android:background="@color/surface_soft"
             android:padding="8dp"
             android:orientation="vertical"
             android:visibility="gone">
@@ -71,7 +76,7 @@
                 android:text="Customer replied:"
                 android:textSize="10sp"
                 android:textStyle="bold"
-                android:textColor="#4CAF50" />
+                android:textColor="@color/success" />
 
             <TextView
                 android:id="@+id/tvReplyPreview"
@@ -79,6 +84,7 @@
                 android:layout_height="wrap_content"
                 android:text="Reply"
                 android:textSize="11sp"
+                android:textColor="@color/text_primary"
                 android:layout_marginTop="4dp" />
 
         </LinearLayout>
@@ -89,9 +95,8 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:text="Reply"
-            android:backgroundTint="#2196F3"
             style="@style/Widget.MaterialComponents.Button.TextButton" />
 
     </LinearLayout>
 
-</androidx.cardview.widget.CardView>
+</com.google.android.material.card.MaterialCardView>

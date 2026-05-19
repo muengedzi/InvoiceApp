@@ -11,6 +11,11 @@ data class Customer(
     val postal_code: String? = null,
     val country: String = "USA",
     val tax_exempt: Boolean = false,
+    val is_company: Boolean = false,
+    val company_registration_number: String? = null,
+    val vat_registered: Boolean = false,
+    val vat_number: String? = null,
+    val company_address: String? = null,
     val notes: String? = null,
     val created_at: String? = null,
     val updated_at: String? = null
@@ -26,6 +31,11 @@ data class CustomerRequest(
     val postal_code: String? = null,
     val country: String = "USA",
     val tax_exempt: Boolean = false,
+    val is_company: Boolean = false,
+    val company_registration_number: String? = null,
+    val vat_registered: Boolean = false,
+    val vat_number: String? = null,
+    val company_address: String? = null,
     val notes: String? = null
 )
 

@@ -4,7 +4,8 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical">
+    android:orientation="vertical"
+    android:background="@color/app_background">
 
     <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
@@ -15,7 +16,7 @@
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
-            android:background="@color/white"
+            android:background="@color/surface_card"
             app:titleTextColor="@color/primary"
             app:navigationIcon="?attr/homeAsUpIndicator" />
 
@@ -41,7 +42,7 @@
                 app:cardCornerRadius="12dp"
                 app:cardElevation="2dp"
                 app:strokeWidth="1dp"
-                app:strokeColor="#E0E0E0">
+                app:strokeColor="@color/border_soft">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -63,7 +64,7 @@
                             android:layout_weight="1"
                             android:text="INV-001"
                             android:textSize="14sp"
-                            android:textColor="@color/gray_600"
+                            android:textColor="@color/text_secondary"
                             android:textStyle="bold" />
 
                         <TextView
@@ -121,7 +122,7 @@
                 app:cardCornerRadius="12dp"
                 app:cardElevation="2dp"
                 app:strokeWidth="1dp"
-                app:strokeColor="#E0E0E0">
+                app:strokeColor="@color/border_soft">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -140,7 +141,7 @@
                             android:layout_height="wrap_content"
                             android:text="Invoice Date"
                             android:textSize="11sp"
-                            android:textColor="@color/gray_600"
+                            android:textColor="@color/text_secondary"
                             android:textAllCaps="true" />
 
                         <TextView
@@ -158,7 +159,7 @@
                     <View
                         android:layout_width="1dp"
                         android:layout_height="match_parent"
-                        android:background="#E0E0E0"
+                        android:background="@color/border_soft"
                         android:layout_marginHorizontal="16dp"/>
 
                     <LinearLayout
@@ -172,7 +173,7 @@
                             android:layout_height="wrap_content"
                             android:text="Due Date"
                             android:textSize="11sp"
-                            android:textColor="@color/gray_600"
+                            android:textColor="@color/text_secondary"
                             android:textAllCaps="true" />
 
                         <TextView
@@ -198,7 +199,7 @@
                 android:text="INVOICE ITEMS"
                 android:textSize="12sp"
                 android:textStyle="bold"
-                android:textColor="@color/gray_600"
+                android:textColor="@color/text_secondary"
                 android:layout_marginStart="4dp"
                 android:layout_marginBottom="8dp" />
 
@@ -209,7 +210,7 @@
                 app:cardCornerRadius="12dp"
                 app:cardElevation="2dp"
                 app:strokeWidth="1dp"
-                app:strokeColor="#E0E0E0">
+                app:strokeColor="@color/border_soft">
 
                 <androidx.recyclerview.widget.RecyclerView
                     android:id="@+id/rvInvoiceItems"
@@ -228,7 +229,7 @@
                 app:cardCornerRadius="12dp"
                 app:cardElevation="2dp"
                 app:strokeWidth="1dp"
-                app:strokeColor="#E0E0E0">
+                app:strokeColor="@color/border_soft">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -286,7 +287,7 @@
                         android:layout_height="wrap_content"
                         android:text="(15% Exclusive)"
                         android:textSize="10sp"
-                        android:textColor="@color/gray_600"
+                        android:textColor="@color/text_secondary"
                         android:gravity="end"
                         android:layout_marginBottom="8dp"
                         android:visibility="gone"/>
@@ -338,7 +339,7 @@
                     <View
                         android:layout_width="match_parent"
                         android:layout_height="1dp"
-                        android:background="#E0E0E0"
+                        android:background="@color/border_soft"
                         android:layout_marginVertical="12dp" />
 
                     <LinearLayout

@@ -25,6 +25,9 @@ data class CompanySettings(
     @SerializedName("company_website")
     val company_website: String? = null,
 
+    @SerializedName("company_vat_number")
+    val company_vat_number: String? = null,
+
     @SerializedName("tax_rate_default")
     val tax_rate_default: Double = 0.0,
 

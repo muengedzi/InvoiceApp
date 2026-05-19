@@ -57,7 +57,13 @@ class AddEditCustomerActivity : AppCompatActivity() {
                         binding.etPostalCode.setText(it.postal_code ?: "")
                         binding.etCountry.setText(it.country)
                         binding.chkTaxExempt.isChecked = it.tax_exempt
+                        binding.chkIsCompany.isChecked = it.is_company
+                        binding.etCompanyRegistrationNumber.setText(it.company_registration_number ?: "")
+                        binding.chkVatRegistered.isChecked = it.vat_registered
+                        binding.etVatNumber.setText(it.vat_number ?: "")
+                        binding.etCompanyAddress.setText(it.company_address ?: "")
                         binding.etNotes.setText(it.notes ?: "")
+                        updateCompanyFieldVisibility()
                     }
                 }
             } catch (e: Exception) {
@@ -75,6 +81,21 @@ class AddEditCustomerActivity : AppCompatActivity() {
         }
         binding.btnDelete.setOnClickListener {
             confirmDeleteCustomer()
+        }
+        binding.chkIsCompany.setOnCheckedChangeListener { _, _ -> updateCompanyFieldVisibility() }
+        binding.chkVatRegistered.setOnCheckedChangeListener { _, _ -> updateCompanyFieldVisibility() }
+        updateCompanyFieldVisibility()
+    }
+
+    private fun updateCompanyFieldVisibility() {
+        val isCompany = binding.chkIsCompany.isChecked
+        val vatRegistered = binding.chkVatRegistered.isChecked
+        binding.layoutCompanyRegistrationNumber.visibility = if (isCompany) View.VISIBLE else View.GONE
+        binding.chkVatRegistered.visibility = if (isCompany) View.VISIBLE else View.GONE
+        binding.layoutCompanyAddress.visibility = if (isCompany) View.VISIBLE else View.GONE
+        binding.layoutVatNumber.visibility = if (isCompany && vatRegistered) View.VISIBLE else View.GONE
+        if (!isCompany) {
+            binding.chkVatRegistered.isChecked = false
         }
     }
 
@@ -123,6 +144,11 @@ class AddEditCustomerActivity : AppCompatActivity() {
             postal_code = binding.etPostalCode.text.toString().trim().ifEmpty { null },
             country = binding.etCountry.text.toString().trim().ifEmpty { "USA" },
             tax_exempt = binding.chkTaxExempt.isChecked,
+            is_company = binding.chkIsCompany.isChecked,
+            company_registration_number = binding.etCompanyRegistrationNumber.text.toString().trim().ifEmpty { null },
+            vat_registered = binding.chkIsCompany.isChecked && binding.chkVatRegistered.isChecked,
+            vat_number = binding.etVatNumber.text.toString().trim().ifEmpty { null },
+            company_address = binding.etCompanyAddress.text.toString().trim().ifEmpty { null },
             notes = binding.etNotes.text.toString().trim().ifEmpty { null }
         )
 

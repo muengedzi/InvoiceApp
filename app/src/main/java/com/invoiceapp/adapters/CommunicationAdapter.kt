@@ -1,19 +1,21 @@
 package com.invoiceapp.adapters
 
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import com.invoiceapp.databinding.ItemCommunicationBinding
 import com.invoiceapp.models.InvoiceCommunication
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Locale
 
 class CommunicationAdapter(
     private var communications: List<InvoiceCommunication>,
     private val onReplyClick: (InvoiceCommunication) -> Unit
 ) : RecyclerView.Adapter<CommunicationAdapter.ViewHolder>() {
 
-    private val dateFormat = SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.US)
+    private val outputDateFormat = SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.US)
+    private val inputDateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US)
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val binding = ItemCommunicationBinding.inflate(
@@ -38,33 +40,38 @@ class CommunicationAdapter(
 
         fun bind(communication: InvoiceCommunication) {
             val sentDate = try {
-                dateFormat.format(SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).parse(communication.sentAt))
+                outputDateFormat.format(inputDateFormat.parse(communication.sentAt)!!)
             } catch (e: Exception) {
                 communication.sentAt
             }
 
             binding.tvType.text = when (communication.communicationType) {
-                "sent" -> "📧 Sent"
-                "follow_up" -> "⚠️ Follow-up"
-                "reply" -> "💬 Reply"
-                else -> "📧 Message"
+                "sent" -> "Sent"
+                "follow_up" -> "Follow-up"
+                "reply" -> "Reply"
+                "customer_reply" -> "Customer Reply"
+                else -> "Message"
             }
 
             binding.tvSubject.text = communication.subject
             binding.tvMessage.text = communication.messageBody
             binding.tvDate.text = sentDate
 
-            // Show reply indicator if customer replied
-            if (communication.customerReplied && communication.replyBody != null) {
-                binding.tvReplyIndicator.visibility = ViewGroup.VISIBLE
-                binding.tvReplyPreview.text = "Customer replied: ${communication.replyBody?.take(100)}..."
-                binding.btnReply.visibility = ViewGroup.GONE
+            val replyBody = communication.replyBody?.trim().orEmpty()
+            if (communication.customerReplied && replyBody.isNotEmpty()) {
+                binding.tvReplyIndicator.visibility = View.VISIBLE
+                binding.tvReplyPreview.text = replyBody
             } else {
-                binding.tvReplyIndicator.visibility = ViewGroup.GONE
-                binding.btnReply.visibility = if (communication.communicationType != "reply") ViewGroup.VISIBLE else ViewGroup.GONE
-                binding.btnReply.setOnClickListener {
-                    onReplyClick(communication)
-                }
+                binding.tvReplyIndicator.visibility = View.GONE
+            }
+
+            binding.btnReply.visibility = if (communication.communicationType != "reply") {
+                View.VISIBLE
+            } else {
+                View.GONE
+            }
+            binding.btnReply.setOnClickListener {
+                onReplyClick(communication)
             }
         }
     }

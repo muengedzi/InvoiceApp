@@ -1,25 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Background color -->
-    <item>
-        <shape>
-            <solid android:color="#FFFFFF"/>
-        </shape>
-    </item>
-
-    <!-- Center logo -->
-    <item
-        android:drawable="@drawable/ic_invoice_logo"
-        android:gravity="center"/>
-
-    <!-- Optional: Add a gradient background -->
     <item>
         <shape>
             <gradient
-                android:startColor="#E8EAF6"
-                android:endColor="#FFFFFF"
-                android:angle="45"/>
+                android:startColor="#EFF6FF"
+                android:centerColor="#FFFFFF"
+                android:endColor="#F8FAFC"
+                android:angle="135"/>
         </shape>
     </item>
 

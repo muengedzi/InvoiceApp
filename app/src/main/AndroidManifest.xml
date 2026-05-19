@@ -68,6 +68,12 @@
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
 
+        <activity
+            android:name=".activities.CustomerCommunicationThreadActivity"
+            android:exported="false"
+            android:label="Customer Communication"
+            android:parentActivityName=".activities.MainActivity" />
+
         <!-- Expense Activities -->
         <activity
             android:name=".activities.ExpensesActivity"

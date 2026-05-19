@@ -39,6 +39,7 @@ class InvoicesFragment : Fragment() {
     private var filterStatus: String? = null
     private var filterDateFrom: String? = null
     private var filterDateTo: String? = null
+    private var searchQuery: String? = null
     private var isFilterApplied = false
 
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
@@ -58,6 +59,7 @@ class InvoicesFragment : Fragment() {
         invoiceViewModel = ViewModelProvider(this)[InvoiceViewModel::class.java]
 
         setupRecyclerView()
+        setupSearch()
         setupFilterChips()
         setupFAB()
         observeViewModel()
@@ -65,6 +67,28 @@ class InvoicesFragment : Fragment() {
         loadInvoices()
 
         return binding.root
+    }
+
+    private fun setupSearch() {
+        binding.etSearch.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                searchQuery = s?.toString()?.takeIf { it.isNotBlank() }
+                loadInvoices()
+            }
+            override fun afterTextChanged(s: android.text.Editable?) {}
+        })
+
+        binding.etSearch.setOnEditorActionListener { v, actionId, event ->
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) {
+                // Already handled by TextWatcher, but let's hide keyboard
+                val imm = requireContext().getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+                imm.hideSoftInputFromWindow(v.windowToken, 0)
+                true
+            } else {
+                false
+            }
+        }
     }
 
     private fun setupFilterChips() {
@@ -90,12 +114,13 @@ class InvoicesFragment : Fragment() {
     }
 
     private fun loadInvoices() {
-        if (isFilterApplied) {
+        if (isFilterApplied || !searchQuery.isNullOrEmpty()) {
             invoiceViewModel.loadInvoicesWithFilters(
                 page = 1,
                 status = filterStatus,
                 dateFrom = filterDateFrom,
-                dateTo = filterDateTo
+                dateTo = filterDateTo,
+                search = searchQuery
             )
         } else {
             invoiceViewModel.loadInvoices(page = 1, status = null)
@@ -299,7 +324,10 @@ class InvoicesFragment : Fragment() {
         filterStatus = null
         filterDateFrom = null
         filterDateTo = null
+        searchQuery = null
         isFilterApplied = false
+        binding.etSearch.setText("")
+        binding.chipGroupFilters.clearCheck()
         loadInvoices()
         Toast.makeText(requireContext(), "Filters cleared", Toast.LENGTH_SHORT).show()
     }
