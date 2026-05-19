@@ -1,6 +1,5 @@
 # ============================================
 # INVOICEAPP - FLASK BACKEND
-# Database: InvoiceApp (SQL Server)
 # ============================================
 
 import os
@@ -17,6 +16,7 @@ import json
 import pdfkit
 from datetime import datetime, timedelta
 from functools import wraps
+from pathlib import Path
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
@@ -34,7 +34,8 @@ import pyodbc
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv()
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / '.env')
 
 # ============================================
 # APP CONFIGURATION
@@ -62,27 +63,10 @@ CORS(app,
          "http://10.0.0.150:5000",
          "http://10.0.0.150:8080"
      ],
-     allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept", "Cookie"],
-     expose_headers=["Set-Cookie", "Cookie"],
-     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
-
-# After request handler for CORS headers
-@app.after_request
-def after_request(response):
-    """Add CORS headers after each request"""
-    origin = request.headers.get('Origin')
-    allowed_origins = {
-        'http://localhost:5000',
-        'http://127.0.0.1:5000',
-        'http://10.0.0.111:5000',
-        'http://10.0.0.150:5000',
-        'http://10.0.0.150:8080'
-    }
-    response.headers['Access-Control-Allow-Origin'] = origin if origin in allowed_origins else 'http://10.0.0.150:5000'
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,Accept,Cookie')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
-    response.headers.add('Access-Control-Allow-Credentials', 'true')
-    return response
+     allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept", "Cookie", "X-CSRFToken"],
+     expose_headers=["Set-Cookie", "Cookie", "Content-Disposition"],
+     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+     max_age=3600)
 
 # PDF Configuration - wkhtmltopdf path
 WKHTMLTOPDF_PATH = r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe"
@@ -90,10 +74,11 @@ pdfkit_config = pdfkit.configuration(wkhtmltopdf=WKHTMLTOPDF_PATH)
 
 # Database Connection
 DB_CONFIG = {
-    'driver': '{ODBC Driver 17 for SQL Server}',
+    'driver': os.getenv('DB_DRIVER', '{ODBC Driver 17 for SQL Server}'),
     'server': os.getenv('DB_SERVER', 'DESKTOP-HEACHMT\\SQLEXPRESS'),
     'database': os.getenv('DB_NAME', 'InvoiceApp'),
-    'trusted_connection': 'yes'
+    'trusted_connection': os.getenv('DB_TRUSTED_CONNECTION', 'yes'),
+    'timeout': os.getenv('DB_CONNECTION_TIMEOUT', '10')
 }
 
 def get_db_connection():
@@ -103,54 +88,10 @@ def get_db_connection():
         f"Server={DB_CONFIG['server']};"
         f"Database={DB_CONFIG['database']};"
         f"Trusted_Connection={DB_CONFIG['trusted_connection']};"
+        f"Connection Timeout={DB_CONFIG['timeout']};"
     )
     return pyodbc.connect(conn_str)
 
-def ensure_invoice_recurring_columns(cursor):
-    cursor.execute("""
-        IF COL_LENGTH('dbo.invoices', 'is_recurring') IS NULL
-            ALTER TABLE dbo.invoices ADD is_recurring BIT NOT NULL CONSTRAINT DF_invoices_is_recurring DEFAULT 0
-        IF COL_LENGTH('dbo.invoices', 'recurring_frequency') IS NULL
-            ALTER TABLE dbo.invoices ADD recurring_frequency NVARCHAR(20) NULL
-        IF COL_LENGTH('dbo.invoices', 'recurring_day') IS NULL
-            ALTER TABLE dbo.invoices ADD recurring_day INT NULL
-        IF COL_LENGTH('dbo.invoices', 'recurring_next_send_date') IS NULL
-            ALTER TABLE dbo.invoices ADD recurring_next_send_date DATE NULL
-        IF COL_LENGTH('dbo.invoices', 'recurring_last_sent_at') IS NULL
-            ALTER TABLE dbo.invoices ADD recurring_last_sent_at DATETIME NULL
-        IF COL_LENGTH('dbo.invoices', 'recurring_active') IS NULL
-            ALTER TABLE dbo.invoices ADD recurring_active BIT NOT NULL CONSTRAINT DF_invoices_recurring_active DEFAULT 1
-        IF COL_LENGTH('dbo.invoices', 'tax_type') IS NULL
-            ALTER TABLE dbo.invoices ADD tax_type NVARCHAR(20) NOT NULL CONSTRAINT DF_invoices_tax_type DEFAULT 'exclusive'
-    """)
-
-def next_monthly_send_date(day, from_date=None):
-    day = max(1, min(int(day or 1), 28))
-    base = from_date or datetime.now().date()
-    if isinstance(base, datetime):
-        base = base.date()
-
-    year = base.year
-    month = base.month
-    candidate = datetime(year, month, day).date()
-    if candidate <= base:
-        month += 1
-        if month > 12:
-            month = 1
-            year += 1
-        candidate = datetime(year, month, day).date()
-    return candidate
-
-def add_month_to_date(date_value):
-    if isinstance(date_value, datetime):
-        date_value = date_value.date()
-    month = date_value.month + 1
-    year = date_value.year
-    if month > 12:
-        month = 1
-        year += 1
-    day = min(date_value.day, month_calendar.monthrange(year, month)[1])
-    return datetime(year, month, day).date()
 
 # Email Configuration
 SMTP_SERVER = "smtp.gmail.com"
@@ -174,7 +115,12 @@ class User(UserMixin):
 
 @login_manager.user_loader
 def load_user(user_id):
-    conn = get_db_connection()
+    try:
+        conn = get_db_connection()
+    except pyodbc.Error as e:
+        print(f"Database connection error while loading user: {e}")
+        return None
+
     cursor = conn.cursor()
     cursor.execute("SELECT id, email, full_name, role FROM users WHERE id = ? AND is_active = 1", (user_id,))
     user = cursor.fetchone()
@@ -219,7 +165,11 @@ def register():
     verification_token = secrets.token_urlsafe(32)
     verification_expiry = datetime.now() + timedelta(hours=24)
     
-    conn = get_db_connection()
+    try:
+        conn = get_db_connection()
+    except pyodbc.Error as e:
+        return database_unavailable_response(e)
+
     cursor = conn.cursor()
     
     try:
@@ -255,7 +205,11 @@ def login():
     if not email or not password:
         return jsonify({"error": "Email and password required"}), 400
     
-    conn = get_db_connection()
+    try:
+        conn = get_db_connection()
+    except pyodbc.Error as e:
+        return database_unavailable_response(e)
+
     cursor = conn.cursor()
     
     cursor.execute("""
@@ -388,6 +342,101 @@ def send_verification_email(to_email, to_name, token):
         return False
 
 # ============================================
+# RECURRING INVOICES & HELPER FUNCTIONS
+# ============================================
+
+def database_unavailable_response(error):
+    print(f"Database connection error: {error}")
+    return jsonify({
+        "error": "Database is unavailable. Please make sure SQL Server (SQLEXPRESS) is running and try again."
+    }), 503
+
+def ensure_invoice_recurring_columns(cursor):
+    cursor.execute("""
+        IF COL_LENGTH('dbo.invoices', 'is_recurring') IS NULL
+            ALTER TABLE dbo.invoices ADD is_recurring BIT NOT NULL CONSTRAINT DF_invoices_is_recurring DEFAULT 0
+        IF COL_LENGTH('dbo.invoices', 'recurring_frequency') IS NULL
+            ALTER TABLE dbo.invoices ADD recurring_frequency NVARCHAR(20) NULL
+        IF COL_LENGTH('dbo.invoices', 'recurring_day') IS NULL
+            ALTER TABLE dbo.invoices ADD recurring_day INT NULL
+        IF COL_LENGTH('dbo.invoices', 'recurring_next_send_date') IS NULL
+            ALTER TABLE dbo.invoices ADD recurring_next_send_date DATE NULL
+        IF COL_LENGTH('dbo.invoices', 'recurring_last_sent_at') IS NULL
+            ALTER TABLE dbo.invoices ADD recurring_last_sent_at DATETIME NULL
+        IF COL_LENGTH('dbo.invoices', 'recurring_active') IS NULL
+            ALTER TABLE dbo.invoices ADD recurring_active BIT NOT NULL CONSTRAINT DF_invoices_recurring_active DEFAULT 1
+        IF COL_LENGTH('dbo.invoices', 'tax_type') IS NULL
+            ALTER TABLE dbo.invoices ADD tax_type NVARCHAR(20) NOT NULL CONSTRAINT DF_invoices_tax_type DEFAULT 'exclusive'
+    """)
+
+def next_monthly_send_date(day, from_date=None):
+    day = max(1, min(int(day or 1), 28))
+    base = from_date or datetime.now().date()
+    if isinstance(base, datetime):
+        base = base.date()
+
+    year = base.year
+    month = base.month
+    candidate = datetime(year, month, day).date()
+    if candidate <= base:
+        month += 1
+        if month > 12:
+            month = 1
+            year += 1
+        candidate = datetime(year, month, day).date()
+    return candidate
+
+def add_month_to_date(date_value):
+    if isinstance(date_value, datetime):
+        date_value = date_value.date()
+    month = date_value.month + 1
+    year = date_value.year
+    if month > 12:
+        month = 1
+        year += 1
+    day = min(date_value.day, month_calendar.monthrange(year, month)[1])
+    return datetime(year, month, day).date()
+
+def calculate_next_send_date(frequency, current_date, day_of_month=None):
+    """Calculate next send date based on frequency"""
+    if isinstance(current_date, str):
+        current_date = datetime.strptime(current_date, '%Y-%m-%d').date()
+    elif isinstance(current_date, datetime):
+        current_date = current_date.date()
+    
+    if frequency == 'weekly':
+        return current_date + timedelta(days=7)
+    elif frequency == 'biweekly':
+        return current_date + timedelta(days=14)
+    elif frequency == 'monthly':
+        if day_of_month:
+            # For monthly, send on specific day of month
+            day_of_month = max(1, min(int(day_of_month or 1), 28))
+            try:
+                next_date = current_date.replace(day=day_of_month)
+                if next_date <= current_date:
+                    # Move to next month
+                    if current_date.month == 12:
+                        next_date = current_date.replace(year=current_date.year + 1, month=1, day=day_of_month)
+                    else:
+                        next_date = current_date.replace(month=current_date.month + 1, day=day_of_month)
+                return next_date
+            except ValueError:
+                # Handle invalid day (e.g., Jan 31 -> Feb 28)
+                return current_date + timedelta(days=30)
+        else:
+            # Default: add 30 days
+            return current_date + timedelta(days=30)
+    elif frequency == 'bimonthly':
+        return current_date + timedelta(days=60)
+    elif frequency == 'quarterly':
+        return current_date + timedelta(days=91)  # ~3 months
+    elif frequency == 'yearly':
+        return current_date.replace(year=current_date.year + 1)
+    else:
+        return current_date + timedelta(days=30)
+
+# ============================================
 # CUSTOMER MANAGEMENT
 # ============================================
 
@@ -405,8 +454,8 @@ def get_customers():
     cursor = conn.cursor()
     
     query = """
-        SELECT id, customer_name, email, phone, address, city, country, 
-               created_at, updated_at
+        SELECT id, customer_name, email, phone, address, city, state,
+               postal_code, country, tax_exempt, notes, created_at, updated_at
         FROM customers 
         WHERE user_id = ?
     """
@@ -418,7 +467,7 @@ def get_customers():
         params.extend([search_pattern, search_pattern, search_pattern])
     
     count_query = query.replace(
-        "SELECT id, customer_name, email, phone, address, city, country, created_at, updated_at",
+        "SELECT id, customer_name, email, phone, address, city, state, postal_code, country, tax_exempt, notes, created_at, updated_at",
         "SELECT COUNT(*)"
     )
     cursor.execute(count_query, params)
@@ -449,9 +498,13 @@ def get_customers():
             "phone": row[3],
             "address": row[4],
             "city": row[5],
-            "country": row[6],
-            "created_at": row[7].isoformat() if row[7] else None,
-            "updated_at": row[8].isoformat() if row[8] else None
+            "state": row[6],
+            "postal_code": row[7],
+            "country": row[8],
+            "tax_exempt": bool(row[9]),
+            "notes": row[10],
+            "created_at": row[11].isoformat() if row[11] else None,
+            "updated_at": row[12].isoformat() if row[12] else None
         })
     
     conn.close()
@@ -462,6 +515,42 @@ def get_customers():
         "page": page,
         "per_page": per_page,
         "total_pages": (total + per_page - 1) // per_page
+    }), 200
+
+@app.route('/api/customers/<int:customer_id>', methods=['GET'])
+@login_required
+def get_customer(customer_id):
+    """Get one customer for the logged-in user"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT id, customer_name, email, phone, address, city, state,
+               postal_code, country, tax_exempt, notes, created_at, updated_at
+        FROM customers
+        WHERE id = ? AND user_id = ?
+    """, (customer_id, current_user.id))
+
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        return jsonify({"error": "Customer not found"}), 404
+
+    return jsonify({
+        "id": row[0],
+        "customer_name": row[1],
+        "email": row[2],
+        "phone": row[3],
+        "address": row[4],
+        "city": row[5],
+        "state": row[6],
+        "postal_code": row[7],
+        "country": row[8],
+        "tax_exempt": bool(row[9]),
+        "notes": row[10],
+        "created_at": row[11].isoformat() if row[11] else None,
+        "updated_at": row[12].isoformat() if row[12] else None
     }), 200
 
 @app.route('/api/customers', methods=['POST'])
@@ -1227,14 +1316,18 @@ def send_invoice(invoice_id):
         }), 500
 
 def process_due_recurring_invoices():
+    """Process all due recurring invoices with multiple frequencies"""
     conn = get_db_connection()
     cursor = conn.cursor()
     ensure_invoice_recurring_columns(cursor)
     conn.commit()
 
     today = datetime.now().date()
+    
+    # Get all active recurring invoices that are due
     cursor.execute("""
-        SELECT id, user_id, recurring_day
+        SELECT id, user_id, recurring_frequency, recurring_day, customer_id, 
+               invoice_number, total_amount, invoice_date, due_date
         FROM invoices
         WHERE is_recurring = 1
           AND recurring_active = 1
@@ -1242,17 +1335,24 @@ def process_due_recurring_invoices():
           AND recurring_next_send_date IS NOT NULL
           AND recurring_next_send_date <= ?
     """, (today,))
+    
     due_invoices = cursor.fetchall()
     conn.close()
 
     sent = []
     failed = []
+    
     for row in due_invoices:
-        invoice_id, user_id, recurring_day = row
+        invoice_id, user_id, frequency, recurring_day, customer_id, invoice_number, total_amount, invoice_date, due_date = row
+        
         try:
-            sent_to = send_invoice_email_helper(invoice_id, user_id)  # Changed here
-            next_send = next_monthly_send_date(recurring_day or 1, today)
-
+            # Send email to customer
+            sent_to = send_invoice_email_helper(invoice_id, user_id)
+            
+            # Calculate next send date based on frequency
+            next_send = calculate_next_send_date(frequency, today, recurring_day)
+            
+            # Update invoice with new send date
             update_conn = get_db_connection()
             update_cursor = update_conn.cursor()
             update_cursor.execute("""
@@ -1265,7 +1365,12 @@ def process_due_recurring_invoices():
             update_conn.commit()
             update_conn.close()
 
-            sent.append({"invoice_id": invoice_id, "sent_to": sent_to, "next_send_date": next_send.isoformat()})
+            sent.append({
+                "invoice_id": invoice_id, 
+                "sent_to": sent_to, 
+                "next_send_date": next_send.isoformat(),
+                "frequency": frequency
+            })
         except Exception as e:
             failed.append({"invoice_id": invoice_id, "error": str(e)})
 
@@ -1283,6 +1388,7 @@ def process_due_recurring_invoices_route():
 
 def start_recurring_invoice_worker():
     def worker():
+        time.sleep(10)
         while True:
             try:
                 process_due_recurring_invoices()
@@ -1293,34 +1399,267 @@ def start_recurring_invoice_worker():
     thread = threading.Thread(target=worker, daemon=True)
     thread.start()
 
+@app.route('/api/payments/<int:payment_id>/reverse', methods=['POST'])
+@login_required
+def reverse_payment(payment_id):
+    """Reverse a payment instead of deleting it (maintains audit trail)"""
+    conn = None
+    cursor = None
+    
+    try:
+        data = request.get_json() or {}
+        reversal_reason = data.get('reason', 'Payment reversal')
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get payment details
+        cursor.execute("""
+            SELECT p.id, p.invoice_id, p.amount, p.status,
+                   i.id, i.total_amount, i.amount_paid, i.balance_due, i.status,
+                   i.user_id
+            FROM payments p
+            JOIN invoices i ON p.invoice_id = i.id
+            WHERE p.id = ? AND p.user_id = ?
+        """, (payment_id, current_user.id))
+        
+        payment = cursor.fetchone()
+        
+        if not payment:
+            return jsonify({"error": "Payment not found"}), 404
+        
+        (payment_id_db, invoice_id, amount, payment_status, 
+         invoice_id_db, total_amount, amount_paid, balance_due, invoice_status, invoice_user_id) = payment
+        
+        # Check if already reversed
+        if payment_status == 'reversed':
+            return jsonify({"error": "Payment already reversed"}), 400
+        
+        # Calculate new amounts
+        new_amount_paid = amount_paid - amount
+        new_balance_due = total_amount - new_amount_paid
+        new_invoice_status = 'paid' if new_balance_due <= 0 else ('pending' if invoice_status != 'draft' else 'draft')
+        
+        # Update payment status to 'reversed' (using existing status column)
+        cursor.execute("""
+            UPDATE payments 
+            SET status = 'reversed',
+                reversed_at = GETDATE(),
+                reversed_by = ?,
+                reversal_reason = ?
+            WHERE id = ? AND user_id = ?
+        """, (current_user.id, reversal_reason, payment_id, current_user.id))
+        
+        # Update invoice totals
+        cursor.execute("""
+            UPDATE invoices 
+            SET amount_paid = ?,
+                balance_due = ?,
+                status = ?,
+                updated_at = GETDATE()
+            WHERE id = ? AND user_id = ?
+        """, (new_amount_paid, new_balance_due, new_invoice_status, invoice_id, current_user.id))
+        
+        conn.commit()
+        
+        return jsonify({
+            "success": True,
+            "message": "Payment reversed successfully",
+            "invoice_id": invoice_id,
+            "new_amount_paid": new_amount_paid,
+            "new_balance_due": new_balance_due,
+            "new_status": new_invoice_status,
+            "reversed_payment": {
+                "id": payment_id,
+                "amount": amount,
+                "reversal_reason": reversal_reason,
+                "reversed_at": datetime.now().isoformat()
+            }
+        }), 200
+        
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        print(f"Error reversing payment: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+        
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
+
+@app.route('/api/payments/<int:payment_id>/reapply', methods=['POST'])
+@login_required
+def reapply_payment(payment_id):
+    """Reapply a reversed payment (undo reversal)"""
+    conn = None
+    cursor = None
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get payment details
+        cursor.execute("""
+            SELECT p.id, p.invoice_id, p.amount, p.status,
+                   i.id, i.total_amount, i.amount_paid, i.balance_due, i.status,
+                   i.user_id
+            FROM payments p
+            JOIN invoices i ON p.invoice_id = i.id
+            WHERE p.id = ? AND p.user_id = ?
+        """, (payment_id, current_user.id))
+        
+        payment = cursor.fetchone()
+        
+        if not payment:
+            return jsonify({"error": "Payment not found"}), 404
+        
+        (payment_id_db, invoice_id, amount, payment_status,
+         invoice_id_db, total_amount, amount_paid, balance_due, invoice_status, invoice_user_id) = payment
+        
+        # Check if reversed
+        if payment_status != 'reversed':
+            return jsonify({"error": "Payment is not reversed"}), 400
+        
+        # Calculate new amounts
+        new_amount_paid = amount_paid + amount
+        new_balance_due = total_amount - new_amount_paid
+        new_invoice_status = 'paid' if new_balance_due <= 0 else ('pending' if invoice_status != 'draft' else 'draft')
+        
+        # Update payment status back to 'completed'
+        cursor.execute("""
+            UPDATE payments 
+            SET status = 'completed',
+                reversed_at = NULL,
+                reversed_by = NULL,
+                reversal_reason = NULL
+            WHERE id = ? AND user_id = ?
+        """, (payment_id, current_user.id))
+        
+        # Update invoice totals
+        cursor.execute("""
+            UPDATE invoices 
+            SET amount_paid = ?,
+                balance_due = ?,
+                status = ?,
+                updated_at = GETDATE()
+            WHERE id = ? AND user_id = ?
+        """, (new_amount_paid, new_balance_due, new_invoice_status, invoice_id, current_user.id))
+        
+        conn.commit()
+        
+        return jsonify({
+            "success": True,
+            "message": "Payment reapplied successfully",
+            "invoice_id": invoice_id,
+            "new_amount_paid": new_amount_paid,
+            "new_balance_due": new_balance_due,
+            "new_status": new_invoice_status
+        }), 200
+        
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        print(f"Error reapplying payment: {e}")
+        return jsonify({"error": str(e)}), 500
+        
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
+
 @app.route('/api/invoices/<int:invoice_id>', methods=['DELETE'])
 @login_required
 def delete_invoice(invoice_id):
+    """Delete invoice - allows draft, pending, and overdue with no active payments"""
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    cursor.execute("""
-        SELECT status FROM invoices 
-        WHERE id = ? AND user_id = ?
-    """, (invoice_id, current_user.id))
-    
-    invoice = cursor.fetchone()
-    
-    if not invoice:
+    try:
+        # Check invoice details
+        cursor.execute("""
+            SELECT status, amount_paid FROM invoices 
+            WHERE id = ? AND user_id = ?
+        """, (invoice_id, current_user.id))
+        
+        invoice = cursor.fetchone()
+        
+        if not invoice:
+            return jsonify({"error": "Invoice not found"}), 404
+        
+        invoice_status = invoice[0].lower() if invoice[0] else ''
+        amount_paid = float(invoice[1]) if invoice[1] else 0
+        
+        # Check for ACTIVE payments only (not reversed)
+        cursor.execute("""
+            SELECT COUNT(*) FROM payments 
+            WHERE invoice_id = ? AND (status IS NULL OR status != 'reversed')
+        """, (invoice_id,))
+        
+        count_result = cursor.fetchone()
+        active_payment_count = count_result[0] if count_result else 0
+        
+        # Check for any payment amount that's not reversed
+        cursor.execute("""
+            SELECT ISNULL(SUM(amount), 0) FROM payments 
+            WHERE invoice_id = ? AND (status IS NULL OR status != 'reversed')
+        """, (invoice_id,))
+        
+        amount_result = cursor.fetchone()
+        active_payment_total = float(amount_result[0]) if amount_result and amount_result[0] else 0
+        
+        # Allowed statuses for deletion (treat overdue same as pending)
+        allowed_statuses = ['draft', 'pending', 'overdue']
+        
+        if invoice_status not in allowed_statuses:
+            return jsonify({
+                "error": f"Cannot delete invoice with status '{invoice_status.upper()}'. "
+                         f"Only draft, pending, or overdue invoices can be deleted."
+            }), 400
+        
+        # Check for active payments
+        if active_payment_count > 0 and active_payment_total > 0:
+            return jsonify({
+                "error": f"Cannot delete invoice with {active_payment_count} active payment(s) totaling R{active_payment_total:.2f}. "
+                         f"Please reverse all active payments first using the payment reversal option."
+            }), 400
+        
+        # Delete invoice items first
+        cursor.execute("DELETE FROM invoice_items WHERE invoice_id = ?", (invoice_id,))
+        
+        # Delete any reversed payments (optional - cleanup)
+        cursor.execute("DELETE FROM payments WHERE invoice_id = ? AND status = 'reversed'", (invoice_id,))
+        
+        # Delete the invoice
+        cursor.execute("DELETE FROM invoices WHERE id = ? AND user_id = ?", (invoice_id, current_user.id))
+        
+        conn.commit()
+        
+        return jsonify({
+            "success": True, 
+            "deleted": True, 
+            "message": f"Invoice deleted successfully"
+        }), 200
+        
+    except Exception as e:
+        conn.rollback()
+        print(f"Error deleting invoice: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+        
+    finally:
         conn.close()
-        return jsonify({"error": "Invoice not found"}), 404
-    
-    if invoice[0] not in ['draft', 'pending']:
-        conn.close()
-        return jsonify({"error": "Cannot delete invoice that has payments or is paid"}), 400
-    
-    cursor.execute("DELETE FROM invoice_items WHERE invoice_id = ?", (invoice_id,))
-    cursor.execute("DELETE FROM invoices WHERE id = ?", (invoice_id,))
-    
-    conn.commit()
-    conn.close()
-    
-    return jsonify({"success": True, "message": "Invoice deleted successfully"}), 200
 
 @app.route('/api/invoices/<int:invoice_id>', methods=['GET'])
 @login_required
@@ -1418,38 +1757,40 @@ def record_payment(invoice_id):
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    cursor.execute("""
-        SELECT id, invoice_number, total_amount, amount_paid, balance_due, status
-        FROM invoices 
-        WHERE id = ? AND user_id = ?
-    """, (invoice_id, current_user.id))
-    
-    invoice = cursor.fetchone()
-    
-    if not invoice:
-        conn.close()
-        return jsonify({"error": "Invoice not found"}), 404
-    
-    invoice_id_db, invoice_number, total_amount, amount_paid, balance_due, status = invoice
-    total_amount = float(total_amount)
-    amount_paid = float(amount_paid) if amount_paid else 0
-    balance_due = float(balance_due) if balance_due else total_amount
-    
-    payment_amount = float(data['amount'])
-    
-    if payment_amount > balance_due:
-        conn.close()
-        return jsonify({"error": f"Payment amount exceeds balance due of ${balance_due:.2f}"}), 400
-    
-    payment_number = f"PAY-{datetime.now().strftime('%Y%m%d')}-{secrets.randbelow(10000):04d}"
-    
     try:
+        # First verify invoice belongs to user
+        cursor.execute("""
+            SELECT id, invoice_number, total_amount, amount_paid, balance_due, status
+            FROM invoices 
+            WHERE id = ? AND user_id = ?
+        """, (invoice_id, current_user.id))
+        
+        invoice = cursor.fetchone()
+        
+        if not invoice:
+            conn.close()
+            return jsonify({"error": "Invoice not found"}), 404
+        
+        invoice_id_db, invoice_number, total_amount, amount_paid, balance_due, status = invoice
+        total_amount = float(total_amount)
+        amount_paid = float(amount_paid) if amount_paid else 0
+        balance_due = float(balance_due) if balance_due else total_amount
+        
+        payment_amount = float(data['amount'])
+        
+        if payment_amount > balance_due:
+            conn.close()
+            return jsonify({"error": f"Payment amount exceeds balance due of R{balance_due:.2f}"}), 400
+        
+        payment_number = f"PAY-{datetime.now().strftime('%Y%m%d')}-{secrets.randbelow(10000):04d}"
+        
+        # Insert payment with user_id
         cursor.execute("""
             INSERT INTO payments (user_id, invoice_id, payment_number, payment_date, 
                                 amount, payment_method, reference_number, notes, status)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'completed')
         """, (
-            current_user.id,
+            current_user.id,  # Make sure user_id is set
             invoice_id,
             payment_number,
             data.get('payment_date', datetime.now().strftime('%Y-%m-%d')),
@@ -1474,9 +1815,11 @@ def record_payment(invoice_id):
         
         conn.commit()
         
+        payment_id = cursor.execute("SELECT @@IDENTITY").fetchone()[0]
+        
         return jsonify({
             "success": True,
-            "payment_id": cursor.execute("SELECT @@IDENTITY").fetchone()[0],
+            "payment_id": payment_id,
             "payment_number": payment_number,
             "amount_paid": payment_amount,
             "total_paid": new_amount_paid,
@@ -1489,9 +1832,198 @@ def record_payment(invoice_id):
     except Exception as e:
         conn.rollback()
         print(f"ERROR recording payment: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
     finally:
         conn.close()
+
+@app.route('/api/payments/<int:payment_id>', methods=['DELETE'])
+@login_required
+def delete_payment(payment_id):
+    """Delete a payment and update invoice totals"""
+    conn = None
+    cursor = None
+    
+    try:
+        print(f"Attempting to delete payment ID: {payment_id}")
+        print(f"Current user ID: {current_user.id}")
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # First, check if payment exists
+        cursor.execute("""
+            SELECT id, invoice_id, amount, status, user_id
+            FROM payments 
+            WHERE id = ?
+        """, (payment_id,))
+        
+        payment_check = cursor.fetchone()
+        if not payment_check:
+            print(f"Payment {payment_id} not found")
+            return jsonify({"error": "Payment not found"}), 404
+        
+        print(f"Payment found: ID={payment_check[0]}, Invoice={payment_check[1]}, Amount={payment_check[2]}, UserID={payment_check[4]}")
+        
+        # Check if payment belongs to current user
+        if payment_check[4] != current_user.id:
+            print(f"Payment belongs to user {payment_check[4]}, but current user is {current_user.id}")
+            return jsonify({"error": "You don't have permission to delete this payment"}), 403
+        
+        # Get payment details with invoice
+        cursor.execute("""
+            SELECT p.id, p.invoice_id, p.amount, p.status,
+                   i.id as invoice_id_db, i.total_amount, i.amount_paid, i.balance_due, i.status as invoice_status,
+                   i.user_id as invoice_user_id
+            FROM payments p
+            JOIN invoices i ON p.invoice_id = i.id
+            WHERE p.id = ? AND p.user_id = ?
+        """, (payment_id, current_user.id))
+        
+        payment = cursor.fetchone()
+        
+        if not payment:
+            print(f"No matching payment found for user {current_user.id}")
+            return jsonify({"error": "Payment not found"}), 404
+        
+        payment_id_db = payment[0]
+        invoice_id = payment[1]
+        payment_amount = float(payment[2]) if payment[2] else 0
+        payment_status = payment[3]
+        invoice_id_db = payment[4]
+        total_amount = float(payment[5]) if payment[5] else 0
+        amount_paid = float(payment[6]) if payment[6] else 0
+        balance_due = float(payment[7]) if payment[7] else 0
+        invoice_status = payment[8]
+        invoice_user_id = payment[9]
+        
+        print(f"Invoice details: ID={invoice_id}, Total={total_amount}, Paid={amount_paid}, Balance={balance_due}, Status={invoice_status}")
+        
+        # Check if invoice belongs to current user
+        if invoice_user_id != current_user.id:
+            print(f"Invoice belongs to user {invoice_user_id}, but current user is {current_user.id}")
+            return jsonify({"error": "You don't have permission to modify this invoice"}), 403
+        
+        # Check if invoice is already paid
+        if invoice_status == 'paid':
+            print("Cannot delete payment from paid invoice")
+            return jsonify({"error": "Cannot delete payment from a fully paid invoice"}), 400
+        
+        # Calculate new amounts
+        new_amount_paid = amount_paid - payment_amount
+        new_balance_due = total_amount - new_amount_paid
+        new_invoice_status = 'paid' if new_balance_due <= 0 else ('pending' if invoice_status != 'draft' else 'draft')
+        
+        print(f"New amounts: Paid={new_amount_paid}, Balance={new_balance_due}, Status={new_invoice_status}")
+        
+        # Delete the payment
+        cursor.execute("DELETE FROM payments WHERE id = ? AND user_id = ?", (payment_id, current_user.id))
+        
+        if cursor.rowcount == 0:
+            print("No rows deleted - payment not found or not owned by user")
+            return jsonify({"error": "Payment not found"}), 404
+        
+        print(f"Deleted {cursor.rowcount} payment record(s)")
+        
+        # Update invoice totals
+        cursor.execute("""
+            UPDATE invoices 
+            SET amount_paid = ?,
+                balance_due = ?,
+                status = ?,
+                updated_at = GETDATE()
+            WHERE id = ? AND user_id = ?
+        """, (new_amount_paid, new_balance_due, new_invoice_status, invoice_id, current_user.id))
+        
+        print(f"Updated invoice {invoice_id}")
+        
+        conn.commit()
+        print("Transaction committed successfully")
+        
+        return jsonify({
+            "success": True,
+            "message": "Payment deleted successfully",
+            "invoice_id": invoice_id,
+            "new_amount_paid": new_amount_paid,
+            "new_balance_due": new_balance_due,
+            "new_status": new_invoice_status
+        }), 200
+        
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        print(f"Error deleting payment: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+        
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            try:
+                conn.close()
+                print("Database connection closed")
+            except Exception as e:
+                print(f"Error closing connection: {e}")
+
+@app.route('/api/invoices/<int:invoice_id>/payments', methods=['GET'])
+@login_required
+def get_invoice_payments(invoice_id):
+    """Get all payments for an invoice including reversal status"""
+    conn = None
+    cursor = None
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT id, payment_number, payment_date, amount, payment_method, 
+                   reference_number, notes, status, created_at,
+                   reversed_at, reversal_reason
+            FROM payments
+            WHERE invoice_id = ? AND user_id = ?
+            ORDER BY payment_date DESC, created_at DESC
+        """, (invoice_id, current_user.id))
+        
+        payments = []
+        for row in cursor.fetchall():
+            payments.append({
+                "id": row[0],
+                "payment_number": row[1],
+                "payment_date": row[2].isoformat() if row[2] else None,
+                "amount": float(row[3]) if row[3] else 0,
+                "payment_method": row[4],
+                "reference_number": row[5],
+                "notes": row[6],
+                "status": row[7],  # 'completed' or 'reversed'
+                "created_at": row[8].isoformat() if row[8] else None,
+                "reversed_at": row[9].isoformat() if row[9] else None,
+                "reversal_reason": row[10]
+            })
+        
+        total_amount = sum(p["amount"] for p in payments if p["status"] == "completed")
+        
+        return jsonify({
+            "payments": payments,
+            "total_payments": len(payments),
+            "total_amount": total_amount
+        }), 200
+        
+    except Exception as e:
+        print(f"Error getting payments: {e}")
+        return jsonify({"error": str(e)}), 500
+        
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
 
 # ============================================
 # PDF INVOICE GENERATION USING PDFKIT
@@ -1866,7 +2398,8 @@ def get_expenses():
     
     query = """
         SELECT id, expense_date, category, amount, description, 
-               vendor_name, payment_method, receipt_image_url, created_at
+               vendor_name, payment_method, receipt_image_url, is_recurring,
+               recurring_period, created_at
         FROM expenses 
         WHERE user_id = ?
     """
@@ -1885,7 +2418,7 @@ def get_expenses():
         params.append(date_to)
     
     count_query = query.replace(
-        "SELECT id, expense_date, category, amount, description, vendor_name, payment_method, receipt_image_url, created_at",
+        "SELECT id, expense_date, category, amount, description, vendor_name, payment_method, receipt_image_url, is_recurring, recurring_period, created_at",
         "SELECT COUNT(*)"
     )
     cursor.execute(count_query, params)
@@ -1918,7 +2451,9 @@ def get_expenses():
             "vendor_name": row[5],
             "payment_method": row[6],
             "receipt_image_url": row[7],
-            "created_at": row[8].isoformat() if row[8] else None
+            "is_recurring": bool(row[8]),
+            "recurring_period": row[9],
+            "created_at": row[10].isoformat() if row[10] else None
         })
     
     conn.close()
@@ -1987,7 +2522,8 @@ def get_expense_by_id(expense_id):
 
     cursor.execute("""
         SELECT id, expense_date, category, amount, description,
-               vendor_name, payment_method, receipt_image_url, created_at
+               vendor_name, payment_method, receipt_image_url, is_recurring,
+               recurring_period, created_at
         FROM expenses
         WHERE id = ? AND user_id = ?
     """, (expense_id, current_user.id))
@@ -2007,7 +2543,9 @@ def get_expense_by_id(expense_id):
         "vendor_name": row[5],
         "payment_method": row[6],
         "receipt_image_url": row[7],
-        "created_at": row[8].isoformat() if row[8] else None
+        "is_recurring": bool(row[8]),
+        "recurring_period": row[9],
+        "created_at": row[10].isoformat() if row[10] else None
     }), 200
 
 @app.route('/api/expenses/<int:expense_id>', methods=['PUT'])
@@ -2855,31 +3393,56 @@ def get_pending_follow_ups():
             SELECT 
                 i.id,
                 i.invoice_number,
+                c.id as customer_id,
                 c.customer_name,
                 i.total_amount,
                 i.balance_due,
                 i.due_date,
                 i.status,
-                DATEDIFF(day, i.due_date, GETDATE()) as days_overdue
+                DATEDIFF(day, i.due_date, GETDATE()) as days_overdue,
+                CASE 
+                    WHEN DATEDIFF(day, i.due_date, GETDATE()) > 30 THEN 'critical'
+                    WHEN DATEDIFF(day, i.due_date, GETDATE()) > 14 THEN 'urgent'
+                    WHEN DATEDIFF(day, i.due_date, GETDATE()) > 7 THEN 'overdue'
+                    ELSE 'standard'
+                END as follow_up_type,
+                -- Check if follow-up record exists
+                ISNULL(f.completed, 0) as completed,
+                ISNULL(f.message_sent, 0) as message_sent,
+                ISNULL(f.customer_responded, 0) as customer_responded,
+                f.message_sent_at,
+                f.responded_at,
+                f.notes
             FROM invoices i
             JOIN customers c ON i.customer_id = c.id
+            LEFT JOIN invoice_follow_ups f ON i.id = f.invoice_id
             WHERE i.user_id = ? 
-            AND i.status IN ('pending', 'overdue')
+            AND i.status IN ('pending', 'overdue', 'sent')
             AND i.balance_due > 0
+            AND (f.completed IS NULL OR f.completed = 0)
             ORDER BY i.due_date ASC
         """, (current_user.id,))
         
         follow_ups = []
         for row in cursor.fetchall():
             follow_ups.append({
-                "id": row[0],
+                "id": row[0],  # invoice_id as follow_up id
+                "invoice_id": row[0],
                 "invoice_number": row[1],
-                "customer_name": row[2],
-                "total_amount": float(row[3]),
-                "balance_due": float(row[4]),
-                "due_date": row[5].isoformat() if row[5] else None,
-                "status": row[6],
-                "days_overdue": row[7] if row[7] else 0
+                "customer_id": row[2],
+                "customer_name": row[3],
+                "total_amount": float(row[4]) if row[4] else 0,
+                "balance_due": float(row[5]) if row[5] else 0,
+                "follow_up_date": row[6].isoformat() if row[6] else None,
+                "status": row[7],
+                "days_overdue": row[8] if row[8] else 0,
+                "follow_up_type": row[9] if row[9] else 'standard',
+                "completed": bool(row[10]) if row[10] is not None else False,
+                "message_sent": bool(row[11]) if row[11] is not None else False,
+                "customer_responded": bool(row[12]) if row[12] is not None else False,
+                "message_sent_at": row[13].isoformat() if row[13] else None,
+                "responded_at": row[14].isoformat() if row[14] else None,
+                "notes": row[15]
             })
         
         conn.close()
@@ -2887,6 +3450,8 @@ def get_pending_follow_ups():
         
     except Exception as e:
         print(f"Error getting follow-ups: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/customers/<int:customer_id>/communication-thread', methods=['GET'])
@@ -3141,6 +3706,419 @@ def get_profit_loss_report():
         return jsonify({"error": str(e)}), 500
     finally:
         conn.close()
+
+@app.route('/api/reports/sales', methods=['GET'])
+@login_required
+def get_sales_report():
+    """Get sales report with grouping by day/week/month/quarter/year"""
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    group_by = request.args.get('group_by', 'month')
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Build group by clause
+    if group_by == 'day':
+        group_clause = "FORMAT(i.invoice_date, 'yyyy-MM-dd')"
+    elif group_by == 'week':
+        group_clause = "CONCAT(YEAR(i.invoice_date), '-W', DATEPART(week, i.invoice_date))"
+    elif group_by == 'month':
+        group_clause = "FORMAT(i.invoice_date, 'yyyy-MM')"
+    elif group_by == 'quarter':
+        group_clause = "CONCAT(YEAR(i.invoice_date), '-Q', DATEPART(quarter, i.invoice_date))"
+    else:  # year
+        group_clause = "YEAR(i.invoice_date)"
+    
+    cursor.execute(f"""
+        SELECT 
+            {group_clause} as period,
+            COUNT(*) as invoice_count,
+            ISNULL(SUM(i.total_amount), 0) as total_amount,
+            ISNULL(SUM(i.tax_amount), 0) as total_tax,
+            ISNULL(SUM(i.discount_amount), 0) as total_discount,
+            ISNULL(SUM(i.shipping_fee), 0) as total_shipping
+        FROM invoices i
+        WHERE i.user_id = ? 
+            AND i.status = 'paid'
+            AND i.invoice_date >= ?
+            AND i.invoice_date <= ?
+        GROUP BY {group_clause}
+        ORDER BY MIN(i.invoice_date)
+    """, (current_user.id, start_date, end_date))
+    
+    results = []
+    for row in cursor.fetchall():
+        results.append({
+            "period": row[0],
+            "invoice_count": row[1],
+            "total_amount": float(row[2]),
+            "total_tax": float(row[3]),
+            "total_discount": float(row[4]),
+            "total_shipping": float(row[5])
+        })
+    
+    # Get summary totals
+    cursor.execute("""
+        SELECT 
+            COUNT(*) as total_invoices,
+            ISNULL(SUM(total_amount), 0) as total_revenue,
+            ISNULL(SUM(tax_amount), 0) as total_tax
+        FROM invoices
+        WHERE user_id = ? 
+            AND status = 'paid'
+            AND invoice_date >= ?
+            AND invoice_date <= ?
+    """, (current_user.id, start_date, end_date))
+    
+    summary = cursor.fetchone()
+    conn.close()
+    
+    return jsonify({
+        "data": results,
+        "summary": {
+            "total_invoices": summary[0],
+            "total_revenue": float(summary[1]),
+            "total_tax": float(summary[2])
+        }
+    }), 200
+
+@app.route('/api/reports/expenses', methods=['GET'])
+@login_required
+def get_expense_report():
+    """Get expense report grouped by category, vendor, and month"""
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+
+    if not start_date or not end_date:
+        return jsonify({"error": "start_date and end_date are required"}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+            SELECT
+                ISNULL(SUM(amount), 0) AS total_expenses,
+                COUNT(*) AS expense_count,
+                ISNULL(AVG(amount), 0) AS average_expense
+            FROM expenses
+            WHERE user_id = ?
+              AND expense_date >= ?
+              AND expense_date <= ?
+        """, (current_user.id, start_date, end_date))
+        summary_row = cursor.fetchone()
+
+        cursor.execute("""
+            SELECT
+                ISNULL(NULLIF(category, ''), 'Uncategorized') AS category,
+                ISNULL(SUM(amount), 0) AS amount,
+                COUNT(*) AS count
+            FROM expenses
+            WHERE user_id = ?
+              AND expense_date >= ?
+              AND expense_date <= ?
+            GROUP BY ISNULL(NULLIF(category, ''), 'Uncategorized')
+            ORDER BY ISNULL(SUM(amount), 0) DESC
+        """, (current_user.id, start_date, end_date))
+        expenses_by_category = [{
+            "category": row[0],
+            "amount": float(row[1] or 0),
+            "count": int(row[2] or 0)
+        } for row in cursor.fetchall()]
+
+        cursor.execute("""
+            SELECT TOP 10
+                ISNULL(NULLIF(vendor_name, ''), 'No vendor') AS vendor_name,
+                ISNULL(SUM(amount), 0) AS amount,
+                COUNT(*) AS count
+            FROM expenses
+            WHERE user_id = ?
+              AND expense_date >= ?
+              AND expense_date <= ?
+            GROUP BY ISNULL(NULLIF(vendor_name, ''), 'No vendor')
+            ORDER BY ISNULL(SUM(amount), 0) DESC
+        """, (current_user.id, start_date, end_date))
+        expenses_by_vendor = [{
+            "vendor_name": row[0],
+            "amount": float(row[1] or 0),
+            "count": int(row[2] or 0)
+        } for row in cursor.fetchall()]
+
+        cursor.execute("""
+            SELECT
+                YEAR(expense_date) AS expense_year,
+                MONTH(expense_date) AS expense_month,
+                ISNULL(SUM(amount), 0) AS amount,
+                COUNT(*) AS count
+            FROM expenses
+            WHERE user_id = ?
+              AND expense_date >= ?
+              AND expense_date <= ?
+            GROUP BY YEAR(expense_date), MONTH(expense_date)
+            ORDER BY YEAR(expense_date), MONTH(expense_date)
+        """, (current_user.id, start_date, end_date))
+        expenses_by_month = [{
+            "year": row[0],
+            "month": row[1],
+            "amount": float(row[2] or 0),
+            "count": int(row[3] or 0)
+        } for row in cursor.fetchall()]
+
+        return jsonify({
+            "start_date": start_date,
+            "end_date": end_date,
+            "summary": {
+                "total_expenses": float(summary_row[0] or 0) if summary_row else 0,
+                "expense_count": int(summary_row[1] or 0) if summary_row else 0,
+                "average_expense": float(summary_row[2] or 0) if summary_row else 0
+            },
+            "expenses_by_category": expenses_by_category,
+            "expenses_by_vendor": expenses_by_vendor,
+            "expenses_by_month": expenses_by_month
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/reports/tax', methods=['GET'])
+@login_required
+def get_tax_report():
+    """Get tax report for VAT/GST filing"""
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT 
+            i.tax_rate,
+            COUNT(*) as invoice_count,
+            ISNULL(SUM(i.subtotal), 0) as taxable_amount,
+            ISNULL(SUM(i.tax_amount), 0) as tax_collected
+        FROM invoices i
+        WHERE i.user_id = ? 
+            AND i.status = 'paid'
+            AND i.invoice_date >= ?
+            AND i.invoice_date <= ?
+        GROUP BY i.tax_rate
+        ORDER BY i.tax_rate
+    """, (current_user.id, start_date, end_date))
+    
+    tax_rates = []
+    for row in cursor.fetchall():
+        tax_rates.append({
+            "tax_rate": float(row[0]) if row[0] else 0,
+            "invoice_count": row[1],
+            "taxable_amount": float(row[2]),
+            "tax_collected": float(row[3])
+        })
+    
+    cursor.execute("""
+        SELECT 
+            ISNULL(SUM(tax_amount), 0) as total_tax,
+            COUNT(DISTINCT invoice_id) as tax_invoices
+        FROM invoice_items ii
+        JOIN invoices i ON ii.invoice_id = i.id
+        WHERE i.user_id = ? 
+            AND i.status = 'paid'
+            AND i.invoice_date >= ?
+            AND i.invoice_date <= ?
+    """, (current_user.id, start_date, end_date))
+    
+    summary = cursor.fetchone()
+    conn.close()
+    
+    return jsonify({
+        "tax_rates": tax_rates,
+        "summary": {
+            "total_tax_collected": float(summary[0]) if summary else 0,
+            "total_tax_invoices": summary[1] if summary else 0
+        }
+    }), 200
+
+@app.route('/api/reports/outstanding', methods=['GET'])
+@login_required
+def get_outstanding_report():
+    """Get outstanding/unpaid invoices report"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT 
+            i.id,
+            i.invoice_number,
+            i.invoice_date,
+            i.due_date,
+            i.total_amount,
+            i.amount_paid,
+            i.balance_due,
+            c.customer_name,
+            c.email as customer_email,
+            c.phone as customer_phone,
+            DATEDIFF(day, i.due_date, GETDATE()) as days_overdue
+        FROM invoices i
+        JOIN customers c ON i.customer_id = c.id
+        WHERE i.user_id = ? 
+            AND i.status IN ('pending', 'overdue')
+            AND i.balance_due > 0
+        ORDER BY i.due_date ASC
+    """, (current_user.id,))
+    
+    outstanding = []
+    total_outstanding = 0
+    for row in cursor.fetchall():
+        balance = float(row[6])
+        total_outstanding += balance
+        outstanding.append({
+            "id": row[0],
+            "invoice_number": row[1],
+            "invoice_date": row[2].isoformat() if row[2] else None,
+            "due_date": row[3].isoformat() if row[3] else None,
+            "total_amount": float(row[4]),
+            "amount_paid": float(row[5]),
+            "balance_due": balance,
+            "customer_name": row[7],
+            "customer_email": row[8],
+            "customer_phone": row[9],
+            "days_overdue": row[10] if row[10] else 0
+        })
+    
+    conn.close()
+    
+    return jsonify({
+        "outstanding_invoices": outstanding,
+        "total_outstanding": total_outstanding
+    }), 200
+
+@app.route('/api/reports/invoice-status', methods=['GET'])
+@login_required
+def get_invoice_status_report():
+    """Get invoice status breakdown"""
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT 
+            status,
+            COUNT(*) as count,
+            ISNULL(SUM(total_amount), 0) as total_amount
+        FROM invoices
+        WHERE user_id = ? 
+            AND invoice_date >= ?
+            AND invoice_date <= ?
+        GROUP BY status
+    """, (current_user.id, start_date, end_date))
+    
+    status_breakdown = []
+    for row in cursor.fetchall():
+        status_breakdown.append({
+            "status": row[0],
+            "count": row[1],
+            "total_amount": float(row[2])
+        })
+    
+    conn.close()
+    
+    return jsonify({
+        "status_breakdown": status_breakdown,
+        "total_invoices": sum(s["count"] for s in status_breakdown)
+    }), 200
+
+@app.route('/api/reports/item-sales', methods=['GET'])
+@login_required
+def get_item_sales_report():
+    """Get sales breakdown by item/service"""
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT 
+            ii.item_name,
+            SUM(ii.quantity) as total_quantity,
+            COUNT(DISTINCT ii.invoice_id) as invoice_count,
+            ISNULL(SUM(ii.total_amount), 0) as total_sales
+        FROM invoice_items ii
+        JOIN invoices i ON ii.invoice_id = i.id
+        WHERE i.user_id = ? 
+            AND i.status = 'paid'
+            AND i.invoice_date >= ?
+            AND i.invoice_date <= ?
+        GROUP BY ii.item_name
+        ORDER BY total_sales DESC
+    """, (current_user.id, start_date, end_date))
+    
+    items = []
+    for row in cursor.fetchall():
+        items.append({
+            "item_name": row[0],
+            "quantity_sold": float(row[1]) if row[1] else 0,
+            "invoice_count": row[2],
+            "total_sales": float(row[3])
+        })
+    
+    conn.close()
+    
+    return jsonify({
+        "items": items,
+        "total_items_sold": sum(i["quantity_sold"] for i in items)
+    }), 200
+
+@app.route('/api/reports/customer', methods=['GET'])
+@login_required
+def get_customer_report():
+    """Get customer report with transaction history"""
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT 
+            c.id,
+            c.customer_name,
+            c.email,
+            c.phone,
+            COUNT(i.id) as invoice_count,
+            ISNULL(SUM(CASE WHEN i.status = 'paid' THEN i.total_amount ELSE 0 END), 0) as total_spent,
+            ISNULL(SUM(CASE WHEN i.status IN ('pending', 'overdue') THEN i.balance_due ELSE 0 END), 0) as outstanding_balance
+        FROM customers c
+        LEFT JOIN invoices i ON c.id = i.customer_id 
+            AND i.user_id = ?
+            AND i.invoice_date >= ?
+            AND i.invoice_date <= ?
+        WHERE c.user_id = ?
+        GROUP BY c.id, c.customer_name, c.email, c.phone
+        ORDER BY total_spent DESC
+    """, (current_user.id, start_date, end_date, current_user.id))
+    
+    customers = []
+    for row in cursor.fetchall():
+        customers.append({
+            "id": row[0],
+            "customer_name": row[1],
+            "email": row[2],
+            "phone": row[3],
+            "invoice_count": row[4],
+            "total_spent": float(row[5]),
+            "outstanding_balance": float(row[6])
+        })
+    
+    conn.close()
+    
+    return jsonify({
+        "customers": customers,
+        "total_customers": len(customers)
+    }), 200
 
 # ============================================
 # DEBUG ENDPOINTS (For testing)

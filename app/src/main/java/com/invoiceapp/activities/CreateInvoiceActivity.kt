@@ -6,6 +6,8 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.os.Bundle
 import android.view.View
+import android.widget.ArrayAdapter
+import android.widget.AutoCompleteTextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -40,6 +42,18 @@ class CreateInvoiceActivity : AppCompatActivity() {
     private var customersList = listOf<Customer>()
     private var shouldRefreshCustomers = false
 
+    // Recurring frequency options
+    private lateinit var frequencyAdapter: ArrayAdapter<String>
+    private val frequencies = listOf("weekly", "biweekly", "monthly", "bimonthly", "quarterly", "yearly")
+    private val frequencyDisplayLabels = mapOf(
+        "weekly" to "Weekly (Every 7 days)",
+        "biweekly" to "Bi-weekly (Every 14 days)",
+        "monthly" to "Monthly (Every month)",
+        "bimonthly" to "Bi-monthly (Every 2 months)",
+        "quarterly" to "Quarterly (Every 3 months)",
+        "yearly" to "Yearly (Every year)"
+    )
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityCreateInvoiceBinding.inflate(layoutInflater)
@@ -51,6 +65,7 @@ class CreateInvoiceActivity : AppCompatActivity() {
 
         setupToolbar()
         setupRecyclerView()
+        setupRecurringFrequencySpinner()
         setupClickListeners()
         setupTextWatchers()
         observeViewModel()
@@ -99,6 +114,13 @@ class CreateInvoiceActivity : AppCompatActivity() {
         }
     }
 
+    private fun setupRecurringFrequencySpinner() {
+        val displayLabels = frequencies.map { frequencyDisplayLabels[it] ?: it }
+        frequencyAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, displayLabels)
+        (binding.etRecurringFrequency as AutoCompleteTextView).setAdapter(frequencyAdapter)
+        binding.etRecurringFrequency.setText(frequencyDisplayLabels["monthly"], false)
+    }
+
     private fun setupClickListeners() {
         binding.btnSelectCustomer.setOnClickListener {
             showCustomerSelector()
@@ -142,11 +164,97 @@ class CreateInvoiceActivity : AppCompatActivity() {
             finish()
         }
 
+        // Recurring checkbox listener
         binding.chkRecurring.setOnCheckedChangeListener { _, isChecked ->
-            binding.layoutRecurringDay.visibility = if (isChecked) View.VISIBLE else View.GONE
-            if (isChecked && binding.etRecurringDay.text.isNullOrBlank()) {
+            binding.layoutRecurringOptions.visibility = if (isChecked) View.VISIBLE else View.GONE
+            if (isChecked) {
                 val currentDay = Calendar.getInstance().get(Calendar.DAY_OF_MONTH).coerceAtMost(28)
                 binding.etRecurringDay.setText(currentDay.toString())
+                updateNextSendDateInfo()
+            }
+        }
+
+        // Frequency change listener
+        binding.etRecurringFrequency.setOnItemClickListener { _, _, position, _ ->
+            val selectedFrequency = frequencies[position]
+            updateSendDayVisibility(selectedFrequency)
+            updateNextSendDateInfo()
+        }
+
+        // Recurring day change listener
+        binding.etRecurringDay.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                updateNextSendDateInfo()
+            }
+        })
+    }
+
+    private fun updateSendDayVisibility(frequency: String) {
+        // Send day is only relevant for monthly frequency
+        val showSendDay = frequency == "monthly"
+        binding.layoutSendDay.visibility = if (showSendDay) View.VISIBLE else View.GONE
+    }
+
+    private fun updateNextSendDateInfo() {
+        if (!binding.chkRecurring.isChecked) return
+
+        val selectedDisplay = binding.etRecurringFrequency.text.toString()
+        val frequency = frequencies.find { frequencyDisplayLabels[it] == selectedDisplay } ?: "monthly"
+        val dayOfMonth = binding.etRecurringDay.text.toString().toIntOrNull() ?: 1
+
+        val nextDate = calculateNextSendDate(frequency, dayOfMonth)
+        val formattedDate = SimpleDateFormat("MMM dd, yyyy", Locale.US).format(nextDate)
+
+        val frequencyDisplay = frequencyDisplayLabels[frequency] ?: frequency
+        binding.tvNextSendInfo.text = "Next invoice will be sent on: $formattedDate ($frequencyDisplay)"
+    }
+
+    private fun calculateNextSendDate(frequency: String, dayOfMonth: Int): Date {
+        val calendar = Calendar.getInstance()
+        val today = calendar.time
+
+        return when (frequency) {
+            "weekly" -> {
+                calendar.add(Calendar.DAY_OF_MONTH, 7)
+                calendar.time
+            }
+            "biweekly" -> {
+                calendar.add(Calendar.DAY_OF_MONTH, 14)
+                calendar.time
+            }
+            "monthly" -> {
+                // Set to the specified day of month
+                val targetDay = dayOfMonth.coerceAtMost(28)
+                calendar.set(Calendar.DAY_OF_MONTH, targetDay)
+
+                // If the target day is before today, move to next month
+                if (calendar.time <= today) {
+                    calendar.add(Calendar.MONTH, 1)
+                    // Ensure day doesn't exceed month length
+                    val maxDay = calendar.getActualMaximum(Calendar.DAY_OF_MONTH)
+                    if (targetDay > maxDay) {
+                        calendar.set(Calendar.DAY_OF_MONTH, maxDay)
+                    }
+                }
+                calendar.time
+            }
+            "bimonthly" -> {
+                calendar.add(Calendar.MONTH, 2)
+                calendar.time
+            }
+            "quarterly" -> {
+                calendar.add(Calendar.MONTH, 3)
+                calendar.time
+            }
+            "yearly" -> {
+                calendar.add(Calendar.YEAR, 1)
+                calendar.time
+            }
+            else -> {
+                calendar.add(Calendar.MONTH, 1)
+                calendar.time
             }
         }
     }
@@ -274,9 +382,19 @@ class CreateInvoiceActivity : AppCompatActivity() {
         binding.etDiscount.setText(invoice.discount_amount.toString())
         binding.etShipping.setText(invoice.shipping_fee.toString())
         binding.etNotes.setText(invoice.notes ?: "")
+
+        // Load recurring data with multiple frequencies
         binding.chkRecurring.isChecked = invoice.is_recurring
-        binding.layoutRecurringDay.visibility = if (invoice.is_recurring) View.VISIBLE else View.GONE
-        binding.etRecurringDay.setText((invoice.recurring_day ?: 1).toString())
+        binding.layoutRecurringOptions.visibility = if (invoice.is_recurring) View.VISIBLE else View.GONE
+
+        if (invoice.is_recurring) {
+            val frequency = invoice.recurring_frequency ?: "monthly"
+            val displayText = frequencyDisplayLabels[frequency] ?: frequency
+            binding.etRecurringFrequency.setText(displayText, false)
+            binding.etRecurringDay.setText((invoice.recurring_day ?: 1).toString())
+            updateSendDayVisibility(frequency)
+            updateNextSendDateInfo()
+        }
 
         // Show/hide Send Invoice button and draft warning based on status
         if (invoice.status.lowercase() == "draft") {
@@ -402,11 +520,11 @@ class CreateInvoiceActivity : AppCompatActivity() {
         etDescription.setText(item.description ?: "")
         etUnitPrice.setText(item.unitPrice.toString())
         etQuantity.setText("1")
-        
+
         // Use item's tax rate or fall back to global rate
         val defaultTaxRate = if (item.taxRate > 0) item.taxRate else (binding.etTaxRate.text.toString().toDoubleOrNull() ?: 0.0)
         etTaxRate.setText(defaultTaxRate.toString())
-        
+
         chkSaveForLater.visibility = View.GONE // Already a master item
 
         AlertDialog.Builder(this)
@@ -575,7 +693,7 @@ class CreateInvoiceActivity : AppCompatActivity() {
         for (item in invoiceItems) {
             val itemAmount = item.quantity * item.unit_price - item.discount_amount
             subtotal += itemAmount
-            
+
             val taxRate = item.tax_rate
             if (isTaxInclusive) {
                 // Formula: Tax = Total - (Total / (1 + Rate))
@@ -587,7 +705,7 @@ class CreateInvoiceActivity : AppCompatActivity() {
 
         val discount = binding.etDiscount.text.toString().toDoubleOrNull() ?: 0.0
         val shipping = binding.etShipping.text.toString().toDoubleOrNull() ?: 0.0
-        
+
         val finalSubtotal = if (isTaxInclusive) subtotal - totalTaxAmount else subtotal
         val total = (if (isTaxInclusive) subtotal else subtotal + totalTaxAmount) - discount + shipping
 
@@ -623,10 +741,15 @@ class CreateInvoiceActivity : AppCompatActivity() {
         }
 
         if (binding.chkRecurring.isChecked) {
-            val recurringDay = binding.etRecurringDay.text.toString().toIntOrNull()
-            if (recurringDay == null || recurringDay !in 1..28) {
-                Toast.makeText(this, "Recurring send day must be between 1 and 28", Toast.LENGTH_SHORT).show()
-                return false
+            val selectedDisplay = binding.etRecurringFrequency.text.toString()
+            val frequency = frequencies.find { frequencyDisplayLabels[it] == selectedDisplay } ?: "monthly"
+
+            if (frequency == "monthly") {
+                val recurringDay = binding.etRecurringDay.text.toString().toIntOrNull()
+                if (recurringDay == null || recurringDay !in 1..28) {
+                    Toast.makeText(this, "Send day must be between 1 and 28 for monthly invoices", Toast.LENGTH_SHORT).show()
+                    return false
+                }
             }
         }
 
@@ -675,6 +798,19 @@ class CreateInvoiceActivity : AppCompatActivity() {
     }
 
     private fun getInvoiceRequest(): InvoiceRequest {
+        var recurringFrequency: String? = null
+        var recurringDay: Int? = null
+
+        if (binding.chkRecurring.isChecked) {
+            val selectedDisplay = binding.etRecurringFrequency.text.toString()
+            recurringFrequency = frequencies.find { frequencyDisplayLabels[it] == selectedDisplay } ?: "monthly"
+            recurringDay = if (recurringFrequency == "monthly") {
+                binding.etRecurringDay.text.toString().toIntOrNull()?.coerceIn(1, 28) ?: 1
+            } else {
+                null
+            }
+        }
+
         return InvoiceRequest(
             customer_id = selectedCustomer!!.id,
             invoice_date = binding.etInvoiceDate.text.toString(),
@@ -688,11 +824,11 @@ class CreateInvoiceActivity : AppCompatActivity() {
             terms_conditions = null,
             footer_text = null,
             is_recurring = binding.chkRecurring.isChecked,
-            recurring_frequency = if (binding.chkRecurring.isChecked) "monthly" else null,
-            recurring_day = if (binding.chkRecurring.isChecked) binding.etRecurringDay.text.toString().toIntOrNull() else null,
+            recurring_frequency = recurringFrequency,
+            recurring_day = recurringDay,
             recurring_active = binding.chkRecurring.isChecked,
             items = invoiceItems.toList(),
-            status = null, // Status is set only when explicitly converting draft to pending
+            status = null,
             tax_type = if (binding.rbTaxInclusive.isChecked) "inclusive" else "exclusive"
         )
     }

@@ -355,6 +355,36 @@ class ManageItemsActivity : AppCompatActivity() {
                     categoryId = categoryId
                 ))
             }
+            .setNeutralButton("Delete") { _, _ ->
+                deleteItem(item)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun deleteItem(item: InvoiceItemMaster) {
+        AlertDialog.Builder(this)
+            .setTitle("Delete Item")
+            .setMessage("Are you sure you want to delete '${item.itemName}'? This action cannot be undone.")
+            .setPositiveButton("Delete") { _, _ ->
+                lifecycleScope.launch {
+                    try {
+                        val response = RetrofitClient.apiService.deleteInvoiceItem(item.id)
+                        if (response.isSuccessful && response.body() != null) {
+                            Toast.makeText(this@ManageItemsActivity, "Item deleted successfully", Toast.LENGTH_SHORT).show()
+                            // Refresh list
+                            currentPage = 1
+                            itemsList.clear()
+                            hasMorePages = true
+                            loadItems()
+                        } else {
+                            Toast.makeText(this@ManageItemsActivity, "Failed to delete item", Toast.LENGTH_SHORT).show()
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(this@ManageItemsActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
             .setNegativeButton("Cancel", null)
             .show()
     }

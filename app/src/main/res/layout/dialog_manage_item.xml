@@ -4,34 +4,39 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:padding="20dp">
 
     <com.google.android.material.textfield.TextInputLayout
+        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="12dp"
-        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+        android:layout_marginBottom="16dp"
+        android:hint="Item Name *"
+        app:boxBackgroundColor="@color/white">
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/etItemName"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Item Name *"
-            android:inputType="text" />
+            android:inputType="text"
+            android:maxLines="1"
+            android:singleLine="true" />
     </com.google.android.material.textfield.TextInputLayout>
 
     <com.google.android.material.textfield.TextInputLayout
+        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="12dp"
-        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+        android:layout_marginBottom="16dp"
+        android:hint="Description"
+        app:boxBackgroundColor="@color/white">
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/etDescription"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Description (Optional)"
-            android:inputType="text" />
+            android:inputType="textMultiLine"
+            android:minLines="2" />
     </com.google.android.material.textfield.TextInputLayout>
 
     <LinearLayout
@@ -40,31 +45,35 @@
         android:orientation="horizontal">
 
         <com.google.android.material.textfield.TextInputLayout
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:layout_marginEnd="8dp"
-            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+            android:hint="Unit Price *"
+            app:boxBackgroundColor="@color/white"
+            app:prefixText="R ">
 
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/etUnitPrice"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:hint="Unit Price *"
                 android:inputType="numberDecimal" />
         </com.google.android.material.textfield.TextInputLayout>
 
         <com.google.android.material.textfield.TextInputLayout
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+            android:hint="Tax Rate"
+            app:boxBackgroundColor="@color/white"
+            app:suffixText="%">
 
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/etTaxRate"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:hint="Tax Rate (%)"
                 android:inputType="numberDecimal"
                 android:text="0" />
         </com.google.android.material.textfield.TextInputLayout>
@@ -75,21 +84,23 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:layout_marginTop="12dp">
+        android:layout_marginTop="16dp">
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Category"
             android:textSize="14sp"
-            android:textColor="@android:color/darker_gray"
-            android:layout_marginBottom="4dp" />
+            android:textColor="@color/gray_600"
+            android:layout_marginBottom="6dp" />
 
         <Spinner
             android:id="@+id/spinnerCategory"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@android:drawable/editbox_dropdown_dark_frame" />
+            android:layout_height="52dp"
+            android:background="@drawable/bg_dropdown_field"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp" />
     </LinearLayout>
 
 </LinearLayout>

@@ -46,11 +46,16 @@ class InvoiceItemAdapter(
             binding.tvTaxRate.text = "Tax: ${item.tax_rate}%"
             binding.tvTaxRate.visibility = if (item.tax_rate > 0) View.VISIBLE else View.GONE
 
-            binding.btnDelete.setOnClickListener {
-                val currentPosition = adapterPosition
-                if (currentPosition != RecyclerView.NO_POSITION) {
-                    onDeleteClick?.invoke(currentPosition)
+            if (onDeleteClick != null) {
+                binding.btnDelete.visibility = View.VISIBLE
+                binding.btnDelete.setOnClickListener {
+                    val currentPosition = adapterPosition
+                    if (currentPosition != RecyclerView.NO_POSITION) {
+                        onDeleteClick.invoke(currentPosition)
+                    }
                 }
+            } else {
+                binding.btnDelete.visibility = View.GONE
             }
         }
 
@@ -63,7 +68,8 @@ class InvoiceItemAdapter(
         }
 
         private fun formatCurrency(amount: Double): String {
-            val format = NumberFormat.getCurrencyInstance()
+            val format = NumberFormat.getCurrencyInstance(java.util.Locale("en", "ZA"))
+            format.currency = java.util.Currency.getInstance("ZAR")
             return format.format(amount)
         }
     }

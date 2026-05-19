@@ -1,7 +1,9 @@
 package com.invoiceapp.activities
 
 import android.os.Bundle
+import android.view.View
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.invoiceapp.databinding.ActivityAddEditCustomerBinding
@@ -23,9 +25,11 @@ class AddEditCustomerActivity : AppCompatActivity() {
 
         if (customerId != null) {
             supportActionBar?.title = "Edit Customer"
+            binding.btnDelete.visibility = View.VISIBLE
             loadCustomerDetails()
         } else {
             supportActionBar?.title = "Add Customer"
+            binding.btnDelete.visibility = View.GONE
         }
 
         setupClickListeners()
@@ -39,9 +43,10 @@ class AddEditCustomerActivity : AppCompatActivity() {
     private fun loadCustomerDetails() {
         lifecycleScope.launch {
             try {
-                val response = RetrofitClient.apiService.getCustomers(page = 1, perPage = 100)
+                val id = customerId ?: return@launch
+                val response = RetrofitClient.apiService.getCustomer(id)
                 if (response.isSuccessful && response.body() != null) {
-                    val customer = response.body()?.customers?.find { it.id == customerId }
+                    val customer = response.body()
                     customer?.let {
                         binding.etCustomerName.setText(it.customer_name)
                         binding.etEmail.setText(it.email)
@@ -67,6 +72,35 @@ class AddEditCustomerActivity : AppCompatActivity() {
         }
         binding.btnCancel.setOnClickListener {
             finish()
+        }
+        binding.btnDelete.setOnClickListener {
+            confirmDeleteCustomer()
+        }
+    }
+
+    private fun confirmDeleteCustomer() {
+        val id = customerId ?: return
+        AlertDialog.Builder(this)
+            .setTitle("Delete Customer")
+            .setMessage("Delete this customer? Customers with invoices cannot be deleted.")
+            .setPositiveButton("Delete") { _, _ -> deleteCustomer(id) }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun deleteCustomer(id: Int) {
+        lifecycleScope.launch {
+            try {
+                val response = RetrofitClient.apiService.deleteCustomer(id)
+                if (response.isSuccessful) {
+                    Toast.makeText(this@AddEditCustomerActivity, "Customer deleted", Toast.LENGTH_SHORT).show()
+                    finish()
+                } else {
+                    Toast.makeText(this@AddEditCustomerActivity, "Failed to delete customer", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this@AddEditCustomerActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 

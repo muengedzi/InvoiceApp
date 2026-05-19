@@ -279,6 +279,9 @@ class ItemsFragment : Fragment() {
 
                 updateItem(item.id, InvoiceItemMasterRequest(itemName, description, unitPrice, taxRate, categoryId))
             }
+            .setNeutralButton("Delete") { _, _ ->
+                deleteItem(item)
+            }
             .setNegativeButton("Cancel", null)
             .show()
     }
@@ -308,6 +311,29 @@ class ItemsFragment : Fragment() {
                 Toast.makeText(requireContext(), "Error: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+    private fun deleteItem(item: InvoiceItemMaster) {
+        AlertDialog.Builder(requireContext())
+            .setTitle("Delete Item")
+            .setMessage("Delete '${item.itemName}'? This removes it from future item selection.")
+            .setPositiveButton("Delete") { _, _ ->
+                viewLifecycleOwner.lifecycleScope.launch {
+                    try {
+                        val response = RetrofitClient.apiService.deleteInvoiceItem(item.id)
+                        if (response.isSuccessful) {
+                            Toast.makeText(requireContext(), "Item deleted", Toast.LENGTH_SHORT).show()
+                            refreshItems()
+                        } else {
+                            Toast.makeText(requireContext(), "Failed to delete item", Toast.LENGTH_SHORT).show()
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(requireContext(), "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun showCategoryFilterDialog() {

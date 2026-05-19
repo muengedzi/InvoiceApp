@@ -72,13 +72,3 @@ data class PaymentRequest(
     val reference_number: String? = null,
     val notes: String? = null
 )
-
-data class InvoiceListResponse(
-    val invoices: List<Invoice>,
-    val total: Int,
-    val page: Int,
-    val per_page: Int,
-    val total_pages: Int
-)
-
-// REMOVED: InvoiceItemMasterRequest - it's now only in InvoiceItemMaster.kt

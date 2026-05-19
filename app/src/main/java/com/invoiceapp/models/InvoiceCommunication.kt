@@ -84,6 +84,9 @@ data class InvoiceFollowUp(
     @SerializedName("invoice_number")
     val invoiceNumber: String? = null,
 
+    @SerializedName("customer_id")
+    val customerId: Int? = null,
+
     @SerializedName("customer_name")
     val customerName: String? = null,
 
@@ -92,6 +95,12 @@ data class InvoiceFollowUp(
 
     @SerializedName("follow_up_type")
     val followUpType: String,
+
+    @SerializedName("balance_due")
+    val balanceDue: Double? = null,
+
+    @SerializedName("days_overdue")
+    val daysOverdue: Int? = null,
 
     @SerializedName("message_sent")
     val messageSent: Boolean = false,

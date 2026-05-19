@@ -3,7 +3,8 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:background="#F5F7FA"
+    android:padding="12dp">
 
     <ProgressBar
         android:id="@+id/progressBar"
@@ -26,12 +27,16 @@
         android:layout_height="wrap_content"
         android:text="No expenses found.\nTap + to add an expense."
         android:gravity="center"
+        android:layout_marginTop="32dp"
         android:textSize="14sp"
+        android:textColor="@color/gray_600"
         android:visibility="gone"/>
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rvExpenses"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="match_parent"
+        android:clipToPadding="false"
+        android:paddingBottom="80dp" />
 
 </LinearLayout>

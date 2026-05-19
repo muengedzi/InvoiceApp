@@ -42,11 +42,15 @@ class RecentInvoiceAdapter(
             binding.tvInvoiceDate.text = formatDate(invoice.invoice_date)
             binding.tvAmount.text = formatCurrency(invoice.total_amount)
 
+            // Show warning icon for overdue invoices
+            binding.ivOverdueWarning.visibility = if (invoice.status.lowercase() == "overdue") android.view.View.VISIBLE else android.view.View.GONE
+
             // Set status color
             when (invoice.status.lowercase()) {
                 "paid" -> binding.tvStatus.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
                 "pending" -> binding.tvStatus.setTextColor(android.graphics.Color.parseColor("#FF9800"))
                 "overdue" -> binding.tvStatus.setTextColor(android.graphics.Color.parseColor("#F44336"))
+                "draft" -> binding.tvStatus.setTextColor(android.graphics.Color.parseColor("#2196F3"))
                 else -> binding.tvStatus.setTextColor(android.graphics.Color.parseColor("#9E9E9E"))
             }
             binding.tvStatus.text = invoice.status.uppercase()

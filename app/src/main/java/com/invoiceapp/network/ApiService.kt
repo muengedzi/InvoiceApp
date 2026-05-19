@@ -24,6 +24,9 @@ interface ApiService {
         @Query("search") search: String? = null
     ): Response<CustomerListResponse>
 
+    @GET("/api/customers/{id}")
+    suspend fun getCustomer(@Path("id") id: Int): Response<Customer>
+
     @POST("/api/customers")
     suspend fun createCustomer(@Body request: CustomerRequest): Response<Map<String, Any>>
 
@@ -41,7 +44,10 @@ interface ApiService {
     suspend fun getInvoices(
         @Query("page") page: Int = 1,
         @Query("per_page") perPage: Int = 20,
-        @Query("status") status: String? = null
+        @Query("status") status: String? = null,
+        @Query("customer_id") customerId: Int? = null,
+        @Query("date_from") dateFrom: String? = null,
+        @Query("date_to") dateTo: String? = null
     ): Response<InvoiceListResponse>
 
     @GET("/api/invoices/{id}")
@@ -80,6 +86,21 @@ interface ApiService {
         @Path("id") id: Int,
         @Body request: PaymentRequest
     ): Response<Map<String, Any>>
+
+    @DELETE("/api/payments/{id}")
+    suspend fun deletePayment(@Path("id") id: Int): Response<Map<String, Any>>
+
+    @GET("/api/invoices/{id}/payments")
+    suspend fun getInvoicePayments(@Path("id") id: Int): Response<PaymentListResponse>
+
+    @POST("/api/payments/{id}/reverse")
+    suspend fun reversePayment(
+        @Path("id") id: Int,
+        @Body reason: Map<String, String>
+    ): Response<Map<String, Any>>
+
+    @POST("/api/payments/{id}/reapply")
+    suspend fun reapplyPayment(@Path("id") id: Int): Response<Map<String, Any>>
 
     // ==================== EXPENSE ENDPOINTS ====================
     @GET("/api/expenses")
@@ -123,7 +144,47 @@ interface ApiService {
     suspend fun getProfitLossReport(
         @Query("start_date") startDate: String,
         @Query("end_date") endDate: String
-    ): Response<ProfitLossReport>
+    ): Response<Map<String, Any>>
+
+    @GET("/api/reports/sales")
+    suspend fun getSalesReport(
+        @Query("start_date") startDate: String,
+        @Query("end_date") endDate: String,
+        @Query("group_by") groupBy: String = "month"
+    ): Response<Map<String, Any>>
+
+    @GET("/api/reports/expenses")
+    suspend fun getExpenseReport(
+        @Query("start_date") startDate: String,
+        @Query("end_date") endDate: String
+    ): Response<Map<String, Any>>
+
+    @GET("/api/reports/tax")
+    suspend fun getTaxReport(
+        @Query("start_date") startDate: String,
+        @Query("end_date") endDate: String
+    ): Response<Map<String, Any>>
+
+    @GET("/api/reports/outstanding")
+    suspend fun getOutstandingReport(): Response<Map<String, Any>>
+
+    @GET("/api/reports/invoice-status")
+    suspend fun getInvoiceStatusReport(
+        @Query("start_date") startDate: String,
+        @Query("end_date") endDate: String
+    ): Response<Map<String, Any>>
+
+    @GET("/api/reports/item-sales")
+    suspend fun getItemSalesReport(
+        @Query("start_date") startDate: String,
+        @Query("end_date") endDate: String
+    ): Response<Map<String, Any>>
+
+    @GET("/api/reports/customer")
+    suspend fun getCustomerReport(
+        @Query("start_date") startDate: String,
+        @Query("end_date") endDate: String
+    ): Response<Map<String, Any>>
 
     // ==================== PDF ENDPOINTS ====================
     @GET("/api/invoices/{id}/pdf")
@@ -137,7 +198,6 @@ interface ApiService {
     @PUT("/api/company-settings")
     suspend fun updateCompanySettings(@Body request: CompanySettings): Response<Map<String, Any>>
 
-    // Add this to ApiService.kt
     @POST("/api/verify-email")
     suspend fun verifyEmail(@Body token: Map<String, String>): Response<Map<String, Any>>
 

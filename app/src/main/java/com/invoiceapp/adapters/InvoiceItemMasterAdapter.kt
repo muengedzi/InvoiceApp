@@ -38,6 +38,7 @@ class InvoiceItemMasterAdapter(
 
             binding.tvItemName.text = item.itemName
             binding.tvDescription.text = item.description ?: "No description"
+            binding.tvCategory.text = item.categoryName ?: "Uncategorized"
             binding.tvUnitPrice.text = currencyFormat.format(item.unitPrice)
             binding.tvTaxRate.text = "Tax: ${item.taxRate}%"
 

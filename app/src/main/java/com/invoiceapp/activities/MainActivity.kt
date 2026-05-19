@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
 import com.google.android.material.bottomnavigation.BottomNavigationView
@@ -114,19 +115,57 @@ class MainActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
+            R.id.menu_reports -> {
+                loadFragment(ReportsFragment())
+                supportActionBar?.title = "Reports"
+                hideFAB()
+                true
+            }
+            R.id.menu_communications -> {
+                loadFragment(CommunicationSummaryFragment())
+                supportActionBar?.title = "Communications"
+                hideFAB()
+                true
+            }
             R.id.menu_settings -> {
                 startActivity(Intent(this, SettingsActivity::class.java))
                 true
             }
             R.id.menu_logout -> {
-                sessionManager.clearSession()
-                val intent = Intent(this, LoginActivity::class.java)
-                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                startActivity(intent)
-                finish()
+                showLogoutConfirmation()
                 true
             }
             else -> super.onOptionsItemSelected(item)
         }
+    }
+
+    private fun showLogoutConfirmation() {
+        AlertDialog.Builder(this)
+            .setTitle("Logout")
+            .setMessage("Are you sure you want to logout?")
+            .setPositiveButton("Logout") { _, _ -> logout() }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun logout() {
+        sessionManager.clearSession()
+        val intent = Intent(this, LoginActivity::class.java)
+        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        startActivity(intent)
+        finish()
+    }
+
+    fun navigateToInvoices() {
+        findViewById<BottomNavigationView>(R.id.bottomNavigation).selectedItemId = R.id.navigation_invoices
+    }
+
+    fun navigateToExpenses() {
+        findViewById<BottomNavigationView>(R.id.bottomNavigation).selectedItemId = R.id.navigation_expenses
+    }
+
+    fun navigateToPendingFollowUps() {
+        val intent = Intent(this, PendingFollowUpsActivity::class.java)
+        startActivity(intent)
     }
 }

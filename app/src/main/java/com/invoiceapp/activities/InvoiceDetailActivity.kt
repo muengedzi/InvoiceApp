@@ -77,6 +77,10 @@ class InvoiceDetailActivity : AppCompatActivity() {
             showPaymentDialog()
         }
 
+        binding.btnViewPayments.setOnClickListener {
+            showPaymentHistory()
+        }
+
         binding.btnCommunication.setOnClickListener {
             val intent = Intent(this, CommunicationActivity::class.java)
             intent.putExtra("invoice_id", invoiceId)
@@ -85,6 +89,14 @@ class InvoiceDetailActivity : AppCompatActivity() {
             intent.putExtra("customer_email", currentInvoice?.customer_email)
             startActivity(intent)
         }
+    }
+
+    private fun showPaymentHistory() {
+        val dialog = PaymentHistoryDialog.newInstance(invoiceId)
+        dialog.setOnPaymentChanged {
+            loadInvoiceDetails()
+        }
+        dialog.show(supportFragmentManager, "payment_history")
     }
 
     private fun setupItemsRecyclerView() {
@@ -129,9 +141,19 @@ class InvoiceDetailActivity : AppCompatActivity() {
         }
 
         invoiceViewModel.createResult.observe(this) { result ->
-            if (result is ApiResponse.Success && result.data is Map<*, *> && result.data["success"] == true && result.data["deleted"] == true) {
-                Toast.makeText(this, "Invoice deleted successfully", Toast.LENGTH_SHORT).show()
-                finish()
+            when (result) {
+                is ApiResponse.Loading -> {
+                    // Delete uses this result stream; no full-screen loading needed.
+                }
+                is ApiResponse.Success -> {
+                    if (result.data is Map<*, *> && result.data["success"] == true && result.data["deleted"] == true) {
+                        Toast.makeText(this, "Invoice deleted successfully", Toast.LENGTH_SHORT).show()
+                        finish()
+                    }
+                }
+                is ApiResponse.Error -> {
+                    Toast.makeText(this, result.message, Toast.LENGTH_LONG).show()
+                }
             }
         }
 
@@ -150,7 +172,6 @@ class InvoiceDetailActivity : AppCompatActivity() {
             }
         }
 
-        // Observe PDF download result from server
         invoiceViewModel.pdfResult.observe(this) { result ->
             when (result) {
                 is ApiResponse.Loading -> {
@@ -178,6 +199,9 @@ class InvoiceDetailActivity : AppCompatActivity() {
         binding.tvInvoiceDate.text = formatDate(invoice.invoice_date)
         binding.tvDueDate.text = formatDate(invoice.due_date)
         binding.tvStatus.text = invoice.status.uppercase()
+
+        binding.ivOverdueWarning.visibility = if (invoice.status.lowercase() == "overdue") View.VISIBLE else View.GONE
+
         invalidateOptionsMenu()
 
         binding.tvSubtotal.text = formatCurrency(invoice.subtotal)
@@ -195,6 +219,12 @@ class InvoiceDetailActivity : AppCompatActivity() {
         binding.tvTotal.text = formatCurrency(invoice.total_amount)
         binding.tvAmountPaid.text = formatCurrency(invoice.amount_paid)
         binding.tvBalanceDue.text = formatCurrency(invoice.balance_due)
+
+        if (invoice.balance_due > 0) {
+            binding.tvBalanceDue.setTextColor(androidx.core.content.ContextCompat.getColor(this, R.color.error))
+        } else {
+            binding.tvBalanceDue.setTextColor(androidx.core.content.ContextCompat.getColor(this, R.color.success))
+        }
 
         if (!invoice.items.isNullOrEmpty()) {
             val itemRequests = invoice.items.map {
@@ -234,12 +264,13 @@ class InvoiceDetailActivity : AppCompatActivity() {
         }
 
         when (invoice.status.lowercase()) {
-            "paid" -> binding.tvStatus.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
-            "pending" -> binding.tvStatus.setTextColor(android.graphics.Color.parseColor("#FF9800"))
-            "overdue" -> binding.tvStatus.setTextColor(android.graphics.Color.parseColor("#F44336"))
-            "draft" -> binding.tvStatus.setTextColor(android.graphics.Color.parseColor("#2196F3"))
-            else -> binding.tvStatus.setTextColor(android.graphics.Color.parseColor("#9E9E9E"))
+            "paid" -> binding.tvStatus.setBackgroundResource(R.drawable.bg_status_paid)
+            "pending" -> binding.tvStatus.setBackgroundResource(R.drawable.bg_status_pending)
+            "overdue" -> binding.tvStatus.setBackgroundResource(R.drawable.bg_status_overdue)
+            "draft" -> binding.tvStatus.setBackgroundResource(R.drawable.bg_status_draft)
+            else -> binding.tvStatus.setBackgroundResource(R.drawable.bg_status_draft)
         }
+        binding.tvStatus.setTextColor(android.graphics.Color.WHITE)
     }
 
     private fun showPaymentDialog() {
@@ -324,10 +355,8 @@ class InvoiceDetailActivity : AppCompatActivity() {
 
     private fun openPdfFile(pdfFile: File) {
         try {
-            // First, try to copy to app's private storage if the file is in Downloads
             val fileToOpen = if (pdfFile.absolutePath.contains("/Download/") ||
                 pdfFile.absolutePath.contains("Download")) {
-                // Copy to app's cache directory for better FileProvider compatibility
                 val cachedFile = File(cacheDir, pdfFile.name)
                 pdfFile.inputStream().use { input ->
                     cachedFile.outputStream().use { output ->
@@ -363,8 +392,6 @@ class InvoiceDetailActivity : AppCompatActivity() {
         } catch (e: Exception) {
             e.printStackTrace()
             Toast.makeText(this, "Error opening PDF: ${e.message}", Toast.LENGTH_LONG).show()
-
-            // Fallback: Show file location
             Toast.makeText(
                 this,
                 "PDF saved to: ${pdfFile.absolutePath}\nOpen manually from file manager",
@@ -398,7 +425,8 @@ class InvoiceDetailActivity : AppCompatActivity() {
     }
 
     private fun formatCurrency(amount: Double): String {
-        val format = NumberFormat.getCurrencyInstance()
+        val format = NumberFormat.getCurrencyInstance(Locale("en", "ZA"))
+        format.currency = Currency.getInstance("ZAR")
         return format.format(amount)
     }
 
@@ -411,6 +439,7 @@ class InvoiceDetailActivity : AppCompatActivity() {
         val status = currentInvoice?.status?.lowercase()
         menu?.findItem(R.id.menu_send_invoice)?.isVisible = status == "draft" || status == "pending" || status == "overdue"
         menu?.findItem(R.id.menu_edit)?.isVisible = status != "paid"
+        menu?.findItem(R.id.menu_delete)?.isVisible = status == "draft" || status == "pending"
         return super.onPrepareOptionsMenu(menu)
     }
 
@@ -438,10 +467,8 @@ class InvoiceDetailActivity : AppCompatActivity() {
         }
     }
 
-    // FIXED: Changed from generatePdf() to downloadPdf() and using server-side download
     private fun downloadPdf() {
         currentInvoice?.let { invoice ->
-            // Call the server-side PDF download
             invoiceViewModel.downloadInvoicePdf(this, invoiceId)
         } ?: Toast.makeText(this, "Invoice data not loaded", Toast.LENGTH_SHORT).show()
     }
@@ -465,6 +492,12 @@ class InvoiceDetailActivity : AppCompatActivity() {
     }
 
     private fun showDeleteConfirmation() {
+        val status = currentInvoice?.status?.lowercase()
+        if (status != "draft" && status != "pending") {
+            Toast.makeText(this, "Only draft and pending invoices can be deleted", Toast.LENGTH_LONG).show()
+            return
+        }
+
         AlertDialog.Builder(this)
             .setTitle("Delete Invoice")
             .setMessage("Are you sure you want to delete this invoice? This action cannot be undone.")

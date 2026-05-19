@@ -2,7 +2,9 @@ package com.invoiceapp.activities
 
 import android.app.DatePickerDialog
 import android.os.Bundle
+import android.view.View
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.invoiceapp.databinding.ActivityAddEditExpenseBinding
@@ -27,8 +29,10 @@ class AddEditExpenseActivity : AppCompatActivity() {
         setupToolbar()
         setupClickListeners()
         if (expenseId == null) {
+            binding.btnDelete.visibility = View.GONE
             setDefaultDate()
         } else {
+            binding.btnDelete.visibility = View.VISIBLE
             loadExpense()
         }
     }
@@ -50,6 +54,40 @@ class AddEditExpenseActivity : AppCompatActivity() {
 
         binding.btnCancel.setOnClickListener {
             finish()
+        }
+
+        binding.btnDelete.setOnClickListener {
+            confirmDeleteExpense()
+        }
+
+        binding.chkIsRecurring.setOnCheckedChangeListener { _, isChecked ->
+            binding.etRecurringPeriod.isEnabled = isChecked
+        }
+    }
+
+    private fun confirmDeleteExpense() {
+        val id = expenseId ?: return
+        AlertDialog.Builder(this)
+            .setTitle("Delete Expense")
+            .setMessage("Delete this expense? This action cannot be undone.")
+            .setPositiveButton("Delete") { _, _ -> deleteExpense(id) }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun deleteExpense(id: Int) {
+        lifecycleScope.launch {
+            try {
+                val response = RetrofitClient.apiService.deleteExpense(id)
+                if (response.isSuccessful) {
+                    Toast.makeText(this@AddEditExpenseActivity, "Expense deleted", Toast.LENGTH_SHORT).show()
+                    finish()
+                } else {
+                    Toast.makeText(this@AddEditExpenseActivity, "Failed to delete expense", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this@AddEditExpenseActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -95,6 +133,9 @@ class AddEditExpenseActivity : AppCompatActivity() {
                     binding.etDescription.setText(expense.description ?: "")
                     binding.etVendor.setText(expense.vendor_name ?: "")
                     binding.etPaymentMethod.setText(expense.payment_method ?: "")
+                    binding.chkIsRecurring.isChecked = expense.is_recurring
+                    binding.etRecurringPeriod.isEnabled = expense.is_recurring
+                    binding.etRecurringPeriod.setText(expense.recurring_period ?: "")
                 } else {
                     Toast.makeText(this@AddEditExpenseActivity, "Expense not found", Toast.LENGTH_SHORT).show()
                     finish()

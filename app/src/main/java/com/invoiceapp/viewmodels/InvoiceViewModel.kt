@@ -7,6 +7,8 @@ import androidx.lifecycle.viewModelScope
 import com.invoiceapp.activities.InvoiceDetailActivity
 import com.invoiceapp.models.Invoice
 import com.invoiceapp.models.InvoiceRequest
+import com.invoiceapp.models.Payment
+import com.invoiceapp.models.PaymentListResponse
 import com.invoiceapp.models.PaymentRequest
 import com.invoiceapp.network.ApiResponse
 import com.invoiceapp.network.RetrofitClient
@@ -27,6 +29,18 @@ class InvoiceViewModel : ViewModel() {
     private val _paymentResult = MutableLiveData<ApiResponse<Any>>()
     val paymentResult: LiveData<ApiResponse<Any>> = _paymentResult
 
+    private val _reversePaymentResult = MutableLiveData<ApiResponse<Any>>()
+    val reversePaymentResult: LiveData<ApiResponse<Any>> = _reversePaymentResult
+
+    private val _reapplyPaymentResult = MutableLiveData<ApiResponse<Any>>()
+    val reapplyPaymentResult: LiveData<ApiResponse<Any>> = _reapplyPaymentResult
+
+    private val _deletePaymentResult = MutableLiveData<ApiResponse<Any>>()
+    val deletePaymentResult: LiveData<ApiResponse<Any>> = _deletePaymentResult
+
+    private val _payments = MutableLiveData<ApiResponse<PaymentListResponse>>()
+    val payments: LiveData<ApiResponse<PaymentListResponse>> = _payments
+
     private val _sendResult = MutableLiveData<ApiResponse<Any>>()
     val sendResult: LiveData<ApiResponse<Any>> = _sendResult
 
@@ -34,12 +48,30 @@ class InvoiceViewModel : ViewModel() {
     val pdfResult: LiveData<ApiResponse<File>> = _pdfResult
 
     fun loadInvoices(page: Int = 1, status: String? = null) {
+        loadInvoicesWithFilters(page, status, null, null, null)
+    }
+
+    fun loadInvoicesWithFilters(
+        page: Int = 1,
+        status: String? = null,
+        customerId: Int? = null,
+        dateFrom: String? = null,
+        dateTo: String? = null
+    ) {
         _invoices.value = ApiResponse.Loading(true)
         viewModelScope.launch {
             try {
-                val response = RetrofitClient.apiService.getInvoices(page, 20, status)
+                val response = RetrofitClient.apiService.getInvoices(
+                    page = page,
+                    perPage = 20,
+                    status = status,
+                    customerId = customerId,
+                    dateFrom = dateFrom,
+                    dateTo = dateTo
+                )
                 if (response.isSuccessful && response.body() != null) {
-                    _invoices.value = ApiResponse.Success(response.body()!!.invoices)
+                    val invoiceResponse = response.body()!!
+                    _invoices.value = ApiResponse.Success(invoiceResponse.invoices ?: emptyList())
                 } else {
                     _invoices.value = ApiResponse.Error("Failed to load invoices")
                 }
@@ -168,11 +200,77 @@ class InvoiceViewModel : ViewModel() {
                 val response = RetrofitClient.apiService.recordPayment(invoiceId, request)
                 if (response.isSuccessful && response.body() != null) {
                     _paymentResult.value = ApiResponse.Success(response.body()!!)
+                    // Refresh invoice details after payment
+                    getInvoiceDetail(invoiceId)
                 } else {
                     _paymentResult.value = ApiResponse.Error("Failed to record payment")
                 }
             } catch (e: Exception) {
                 _paymentResult.value = ApiResponse.Error(e.message ?: "Network error")
+            }
+        }
+    }
+
+    fun reversePayment(paymentId: Int, reason: String = "") {
+        _reversePaymentResult.value = ApiResponse.Loading(true)
+        viewModelScope.launch {
+            try {
+                val response = RetrofitClient.apiService.reversePayment(paymentId, mapOf("reason" to reason))
+                if (response.isSuccessful && response.body() != null) {
+                    _reversePaymentResult.value = ApiResponse.Success(response.body()!!)
+                } else {
+                    _reversePaymentResult.value = ApiResponse.Error("Failed to reverse payment")
+                }
+            } catch (e: Exception) {
+                _reversePaymentResult.value = ApiResponse.Error(e.message ?: "Network error")
+            }
+        }
+    }
+
+    fun reapplyPayment(paymentId: Int) {
+        _reapplyPaymentResult.value = ApiResponse.Loading(true)
+        viewModelScope.launch {
+            try {
+                val response = RetrofitClient.apiService.reapplyPayment(paymentId)
+                if (response.isSuccessful && response.body() != null) {
+                    _reapplyPaymentResult.value = ApiResponse.Success(response.body()!!)
+                } else {
+                    _reapplyPaymentResult.value = ApiResponse.Error("Failed to reapply payment")
+                }
+            } catch (e: Exception) {
+                _reapplyPaymentResult.value = ApiResponse.Error(e.message ?: "Network error")
+            }
+        }
+    }
+
+    fun deletePayment(paymentId: Int) {
+        _deletePaymentResult.value = ApiResponse.Loading(true)
+        viewModelScope.launch {
+            try {
+                val response = RetrofitClient.apiService.deletePayment(paymentId)
+                if (response.isSuccessful && response.body() != null) {
+                    _deletePaymentResult.value = ApiResponse.Success(response.body()!!)
+                } else {
+                    _deletePaymentResult.value = ApiResponse.Error("Failed to delete payment")
+                }
+            } catch (e: Exception) {
+                _deletePaymentResult.value = ApiResponse.Error(e.message ?: "Network error")
+            }
+        }
+    }
+
+    fun getInvoicePayments(invoiceId: Int) {
+        _payments.value = ApiResponse.Loading(true)
+        viewModelScope.launch {
+            try {
+                val response = RetrofitClient.apiService.getInvoicePayments(invoiceId)
+                if (response.isSuccessful && response.body() != null) {
+                    _payments.value = ApiResponse.Success(response.body()!!)
+                } else {
+                    _payments.value = ApiResponse.Error("Failed to load payments")
+                }
+            } catch (e: Exception) {
+                _payments.value = ApiResponse.Error(e.message ?: "Network error")
             }
         }
     }

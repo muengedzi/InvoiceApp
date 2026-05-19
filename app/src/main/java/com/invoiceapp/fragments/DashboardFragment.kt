@@ -12,6 +12,7 @@ import com.github.mikephil.charting.data.PieDataSet
 import com.github.mikephil.charting.data.PieEntry
 import com.github.mikephil.charting.formatter.PercentFormatter
 import com.invoiceapp.R
+import com.invoiceapp.activities.MainActivity
 import com.invoiceapp.adapters.RecentInvoiceAdapter
 import com.invoiceapp.adapters.RecentExpenseAdapter
 import com.invoiceapp.databinding.FragmentDashboardBinding
@@ -102,13 +103,11 @@ class DashboardFragment : Fragment() {
 
         // Navigation for View All
         binding.tvViewAllInvoices.setOnClickListener {
-            val bottomNav = requireActivity().findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.bottomNavigation)
-            bottomNav.selectedItemId = R.id.navigation_invoices
+            (requireActivity() as? MainActivity)?.navigateToInvoices()
         }
 
         binding.tvViewAllExpenses.setOnClickListener {
-            val bottomNav = requireActivity().findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.bottomNavigation)
-            bottomNav.selectedItemId = R.id.navigation_expenses
+            (requireActivity() as? MainActivity)?.navigateToExpenses()
         }
     }
 

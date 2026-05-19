@@ -4,14 +4,13 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.invoiceapp.models.ProfitLossReport
 import com.invoiceapp.network.ApiResponse
 import com.invoiceapp.network.RetrofitClient
 import kotlinx.coroutines.launch
 
 class ReportViewModel : ViewModel() {
-    private val _profitLossReport = MutableLiveData<ApiResponse<ProfitLossReport>>()
-    val profitLossReport: LiveData<ApiResponse<ProfitLossReport>> = _profitLossReport
+    private val _profitLossReport = MutableLiveData<ApiResponse<Map<String, Any>>>()
+    val profitLossReport: LiveData<ApiResponse<Map<String, Any>>> = _profitLossReport
 
     fun loadProfitLossReport(startDate: String, endDate: String) {
         _profitLossReport.value = ApiResponse.Loading(true)

@@ -4,7 +4,8 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
 
     <application
@@ -38,12 +39,14 @@
 
         <activity
             android:name=".activities.RegisterActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
 
         <!-- Main Activity -->
         <activity
             android:name=".activities.MainActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:launchMode="singleTop" />
 
         <!-- Invoice Activities -->
         <activity
@@ -62,7 +65,8 @@
 
         <activity
             android:name=".activities.AddEditCustomerActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
 
         <!-- Expense Activities -->
         <activity
@@ -71,18 +75,36 @@
 
         <activity
             android:name=".activities.AddEditExpenseActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
 
         <!-- Settings -->
         <activity
             android:name=".activities.SettingsActivity"
             android:exported="false" />
 
+        <!-- Manage Items -->
         <activity
             android:name=".activities.ManageItemsActivity"
             android:exported="false"
-            android:label="Manage Items" />
+            android:label="Manage Items"
+            android:parentActivityName=".activities.MainActivity" />
 
+        <!-- Communication -->
+        <activity
+            android:name=".activities.CommunicationActivity"
+            android:exported="false"
+            android:label="Communication"
+            android:parentActivityName=".activities.InvoiceDetailActivity" />
+
+        <!-- Pending Follow Ups -->
+        <activity
+            android:name=".activities.PendingFollowUpsActivity"
+            android:exported="false"
+            android:label="Pending Follow-ups"
+            android:parentActivityName=".activities.MainActivity" />
+
+        <!-- Email Verification -->
         <activity
             android:name=".activities.VerifyEmailActivity"
             android:exported="true"
@@ -91,12 +113,16 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="http" android:host="10.0.0.150" android:port="5000" android:pathPattern="/verify-email-page" />
-                <data android:scheme="invoiceapp" android:host="verify" />
+                <data android:scheme="http"
+                    android:host="10.0.0.150"
+                    android:port="5000"
+                    android:pathPattern="/verify-email-page" />
+                <data android:scheme="invoiceapp"
+                    android:host="verify" />
             </intent-filter>
         </activity>
 
-
+        <!-- File Provider for PDF sharing -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -107,7 +133,6 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
-        <activity android:name=".activities.CommunicationActivity" />
     </application>
 
 </manifest>

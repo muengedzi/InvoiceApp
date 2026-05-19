@@ -9,6 +9,12 @@
         app:showAsAction="never" />
 
     <item
+        android:id="@+id/menu_communications"
+        android:title="@string/menu_communications"
+        android:icon="@android:drawable/ic_menu_send"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/menu_settings"
         android:title="Settings"
         android:icon="@android:drawable/ic_menu_preferences"
