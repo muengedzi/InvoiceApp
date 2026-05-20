@@ -81,6 +81,9 @@ interface ApiService {
         @Body request: Any
     ): Response<Map<String, Any>>
 
+    @POST("api/quotations")
+    suspend fun createQuotation(@Body request: InvoiceRequest): Response<Map<String, Any>>
+
     // ==================== PAYMENT ENDPOINTS ====================
     @POST("/api/invoices/{id}/payments")
     suspend fun recordPayment(

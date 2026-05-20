@@ -9,6 +9,12 @@
         app:showAsAction="never" />
 
     <item
+        android:id="@+id/menu_create_quotation"
+        android:title="@string/menu_create_quotation"
+        android:icon="@drawable/ic_add"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/menu_communications"
         android:title="@string/menu_communications"
         android:icon="@android:drawable/ic_menu_send"

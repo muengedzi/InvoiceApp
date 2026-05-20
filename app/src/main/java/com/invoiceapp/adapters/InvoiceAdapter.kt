@@ -63,33 +63,43 @@ class InvoiceAdapter(
 
             // UI Polishing: Update status pill
             val status = invoice.status.lowercase()
-            binding.tvStatus.text = status.uppercase()
-            
-            // Show warning icon for overdue invoices
-            binding.ivOverdueWarning.visibility = if (status == "overdue") android.view.View.VISIBLE else android.view.View.GONE
-            
+
             when (status) {
                 "paid" -> {
+                    binding.tvStatus.text = "ARCHIVED"
                     binding.tvStatus.setBackgroundResource(R.drawable.bg_status_paid)
                     binding.tvBalanceDue.setTextColor(ContextCompat.getColor(itemView.context, R.color.status_paid))
                 }
-                "pending" -> {
-                    binding.tvStatus.setBackgroundResource(R.drawable.bg_status_pending)
-                    binding.tvBalanceDue.setTextColor(ContextCompat.getColor(itemView.context, R.color.status_pending))
-                }
-                "overdue" -> {
-                    binding.tvStatus.setBackgroundResource(R.drawable.bg_status_overdue)
-                    binding.tvBalanceDue.setTextColor(ContextCompat.getColor(itemView.context, R.color.status_overdue))
-                }
-                "draft" -> {
-                    binding.tvStatus.setBackgroundResource(R.drawable.bg_status_draft)
-                    binding.tvBalanceDue.setTextColor(ContextCompat.getColor(itemView.context, R.color.status_draft))
+                "quotation", "quote" -> {
+                    binding.tvStatus.text = "QUOTATION"
+                    binding.tvStatus.setBackgroundResource(R.drawable.bg_status_quotation)
+                    binding.tvBalanceDue.setTextColor(ContextCompat.getColor(itemView.context, R.color.status_quotation))
                 }
                 else -> {
-                    binding.tvStatus.setBackgroundResource(R.drawable.bg_status_draft)
-                    binding.tvBalanceDue.setTextColor(ContextCompat.getColor(itemView.context, R.color.gray_600))
+                    binding.tvStatus.text = status.uppercase()
+                    when (status) {
+                        "pending" -> {
+                            binding.tvStatus.setBackgroundResource(R.drawable.bg_status_pending)
+                            binding.tvBalanceDue.setTextColor(ContextCompat.getColor(itemView.context, R.color.status_pending))
+                        }
+                        "overdue" -> {
+                            binding.tvStatus.setBackgroundResource(R.drawable.bg_status_overdue)
+                            binding.tvBalanceDue.setTextColor(ContextCompat.getColor(itemView.context, R.color.status_overdue))
+                        }
+                        "draft" -> {
+                            binding.tvStatus.setBackgroundResource(R.drawable.bg_status_draft)
+                            binding.tvBalanceDue.setTextColor(ContextCompat.getColor(itemView.context, R.color.status_draft))
+                        }
+                        else -> {
+                            binding.tvStatus.setBackgroundResource(R.drawable.bg_status_draft)
+                            binding.tvBalanceDue.setTextColor(ContextCompat.getColor(itemView.context, R.color.gray_600))
+                        }
+                    }
                 }
             }
+
+            // Show warning icon for overdue invoices
+            binding.ivOverdueWarning.visibility = if (status == "overdue") android.view.View.VISIBLE else android.view.View.GONE
 
             binding.root.setOnClickListener {
                 onItemClick(invoice.id)

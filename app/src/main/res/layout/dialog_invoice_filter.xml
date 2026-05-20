@@ -50,6 +50,12 @@
             android:layout_height="wrap_content"
             android:text="Draft" />
 
+        <RadioButton
+            android:id="@+id/radioQuotation"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Quotation" />
+
     </RadioGroup>
 
     <View

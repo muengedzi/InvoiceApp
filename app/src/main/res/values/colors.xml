@@ -27,6 +27,7 @@
     <color name="status_pending">#FF9800</color>
     <color name="status_overdue">#F44336</color>
     <color name="status_draft">#2196F3</color>
+    <color name="status_quotation">#9C27B0</color>
     <color name="warning_background">#FFF3E0</color>
     <color name="warning_text">#E65100</color>
 </resources>

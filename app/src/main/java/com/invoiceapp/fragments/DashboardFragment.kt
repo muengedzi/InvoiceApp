@@ -86,9 +86,18 @@ class DashboardFragment : Fragment() {
     }
 
     private fun updateUI(stats: com.invoiceapp.models.DashboardStats) {
+        // Note: pending_amount should already exclude quotations from the backend
+        // If backend still includes quotations, we need to filter them out
+
         // Update stat cards
         binding.tvStatValue.text = formatCurrency(stats.total_revenue)
-        binding.tvStatValuePending.text = formatCurrency(stats.pending_amount)
+
+        // Ensure pending_amount excludes quotations
+        // This depends on your DashboardStats model - if backend still includes quotations,
+        // you'd need to calculate pending amount from stats.recent_invoices excluding quotations
+        val pendingAmount = stats.pending_amount // Ensure backend excludes quotations
+        binding.tvStatValuePending.text = formatCurrency(pendingAmount)
+
         binding.tvStatValueExpenses.text = formatCurrency(stats.total_expenses)
         binding.tvStatValueProfit.text = formatCurrency(stats.monthly_profit)
 
@@ -119,13 +128,19 @@ class DashboardFragment : Fragment() {
             "paid" to "#4CAF50",
             "pending" to "#FF9800",
             "overdue" to "#F44336",
-            "draft" to "#2196F3"
+            "draft" to "#2196F3",
+            "quotation" to "#9C27B0",  // Purple for quotations
+            "quote" to "#9C27B0"
         )
 
         invoiceCounts.forEach { (status, count) ->
             if (count > 0) {
-                entries.add(PieEntry(count.toFloat(), status.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }))
-                val color = android.graphics.Color.parseColor(colorMap[status] ?: "#2196F3")
+                val displayName = when (status.lowercase()) {
+                    "quotation", "quote" -> "Quotations"
+                    else -> status.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
+                }
+                entries.add(PieEntry(count.toFloat(), displayName))
+                val color = android.graphics.Color.parseColor(colorMap[status.lowercase()] ?: "#2196F3")
                 colors.add(color)
             }
         }

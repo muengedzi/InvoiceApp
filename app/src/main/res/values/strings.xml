@@ -47,4 +47,5 @@
     <string name="menu_communications">Communications</string>
     <string name="overdue_warning">Overdue Warning</string>
     <string name="search_invoices_hint">Search customer or invoice #</string>
+    <string name="menu_create_quotation">Create Quotation</string>
 </resources>

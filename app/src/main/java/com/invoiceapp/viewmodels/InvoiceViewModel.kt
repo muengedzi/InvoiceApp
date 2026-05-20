@@ -79,7 +79,8 @@ class InvoiceViewModel : ViewModel() {
         dateFrom: String? = null,
         dateTo: String? = null,
         search: String? = null,
-        resetList: Boolean = true
+        resetList: Boolean = true,
+        perPage: Int = 20
     ) {
         if (resetList) {
             currentPage = page
@@ -95,7 +96,7 @@ class InvoiceViewModel : ViewModel() {
             try {
                 val response = RetrofitClient.apiService.getInvoices(
                     page = page,
-                    perPage = 500, // Increased to load more invoices at once
+                    perPage = perPage,
                     status = status,
                     customerId = customerId,
                     dateFrom = dateFrom,

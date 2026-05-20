@@ -45,15 +45,27 @@ class RecentInvoiceAdapter(
             // Show warning icon for overdue invoices
             binding.ivOverdueWarning.visibility = if (invoice.status.lowercase() == "overdue") android.view.View.VISIBLE else android.view.View.GONE
 
-            // Set status color
-            when (invoice.status.lowercase()) {
-                "paid" -> binding.tvStatus.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
-                "pending" -> binding.tvStatus.setTextColor(android.graphics.Color.parseColor("#FF9800"))
-                "overdue" -> binding.tvStatus.setTextColor(android.graphics.Color.parseColor("#F44336"))
-                "draft" -> binding.tvStatus.setTextColor(android.graphics.Color.parseColor("#2196F3"))
-                else -> binding.tvStatus.setTextColor(android.graphics.Color.parseColor("#9E9E9E"))
+            // Set status color and text
+            val status = invoice.status.lowercase()
+            when (status) {
+                "paid" -> {
+                    binding.tvStatus.text = "ARCHIVED"
+                    binding.tvStatus.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
+                }
+                "quotation", "quote" -> {
+                    binding.tvStatus.text = "QUOTATION"
+                    binding.tvStatus.setTextColor(android.graphics.Color.parseColor("#9C27B0"))
+                }
+                else -> {
+                    binding.tvStatus.text = status.uppercase()
+                    when (status) {
+                        "pending" -> binding.tvStatus.setTextColor(android.graphics.Color.parseColor("#FF9800"))
+                        "overdue" -> binding.tvStatus.setTextColor(android.graphics.Color.parseColor("#F44336"))
+                        "draft" -> binding.tvStatus.setTextColor(android.graphics.Color.parseColor("#2196F3"))
+                        else -> binding.tvStatus.setTextColor(android.graphics.Color.parseColor("#9E9E9E"))
+                    }
+                }
             }
-            binding.tvStatus.text = invoice.status.uppercase()
 
             binding.root.setOnClickListener {
                 onItemClick(invoice.id)

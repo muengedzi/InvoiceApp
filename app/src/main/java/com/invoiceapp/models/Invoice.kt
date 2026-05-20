@@ -47,7 +47,7 @@ data class InvoiceItemRequest(
 data class InvoiceRequest(
     val customer_id: Int,
     val invoice_date: String,
-    val due_date: String,
+    val due_date: String? = null,
     val po_number: String? = null,
     val tax_rate: Double = 0.0,
     val discount_amount: Double = 0.0,

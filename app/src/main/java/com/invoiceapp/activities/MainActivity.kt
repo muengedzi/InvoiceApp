@@ -179,6 +179,12 @@ class MainActivity : AppCompatActivity() {
                 hideFAB()
                 true
             }
+            R.id.menu_create_quotation -> {
+                val intent = Intent(this, CreateInvoiceActivity::class.java)
+                intent.putExtra("type", "quotation")
+                startActivity(intent)
+                true
+            }
             R.id.menu_communications -> {
                 loadFragment(CommunicationSummaryFragment())
                 supportActionBar?.title = "Communications"

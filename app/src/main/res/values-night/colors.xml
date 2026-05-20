@@ -14,6 +14,7 @@
     <color name="border_soft">#334155</color>
     <color name="warning_background">#4D2C00</color>
     <color name="warning_text">#FFB74D</color>
+    <color name="status_quotation">#CE93D8</color>
     <color name="black">#FFFFFFFF</color>
     <color name="white">#FF000000</color>
 </resources>

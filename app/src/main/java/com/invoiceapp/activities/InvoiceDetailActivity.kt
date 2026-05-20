@@ -147,7 +147,12 @@ class InvoiceDetailActivity : AppCompatActivity() {
                 }
                 is ApiResponse.Success -> {
                     if (result.data is Map<*, *> && result.data["success"] == true && result.data["deleted"] == true) {
-                        Toast.makeText(this, "Invoice deleted successfully", Toast.LENGTH_SHORT).show()
+                        val message = if (currentInvoice?.status?.lowercase() == "quotation") {
+                            "Quotation deleted successfully"
+                        } else {
+                            "Invoice deleted successfully"
+                        }
+                        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
                         finish()
                     }
                 }
@@ -197,10 +202,25 @@ class InvoiceDetailActivity : AppCompatActivity() {
         binding.tvInvoiceNumber.text = invoice.invoice_number
         binding.tvCustomerName.text = invoice.customer_name ?: "N/A"
         binding.tvInvoiceDate.text = formatDate(invoice.invoice_date)
-        binding.tvDueDate.text = formatDate(invoice.due_date)
-        binding.tvStatus.text = invoice.status.uppercase()
 
-        binding.ivOverdueWarning.visibility = if (invoice.status.lowercase() == "overdue") View.VISIBLE else View.GONE
+        // Handle due date - quotations may not have a due date
+        val dueDate = invoice.due_date
+        if (dueDate.isNullOrEmpty() || dueDate == "null") {
+            binding.tvDueDate.text = "N/A"
+        } else {
+            binding.tvDueDate.text = formatDate(dueDate)
+        }
+
+        val status = invoice.status.lowercase()
+        if (status == "paid") {
+            binding.tvStatus.text = "ARCHIVED"
+        } else if (status == "quotation") {
+            binding.tvStatus.text = "QUOTATION"
+        } else {
+            binding.tvStatus.text = invoice.status.uppercase()
+        }
+
+        binding.ivOverdueWarning.visibility = if (status == "overdue") View.VISIBLE else View.GONE
 
         invalidateOptionsMenu()
 
@@ -244,7 +264,8 @@ class InvoiceDetailActivity : AppCompatActivity() {
             binding.rvInvoiceItems.visibility = View.GONE
         }
 
-        when (invoice.status.lowercase()) {
+        // Configure buttons based on status
+        when (status) {
             "paid" -> {
                 binding.btnRecordPayment.isEnabled = false
                 binding.btnRecordPayment.text = "Fully Paid"
@@ -253,9 +274,17 @@ class InvoiceDetailActivity : AppCompatActivity() {
                 binding.btnRecordPayment.isEnabled = false
                 binding.btnRecordPayment.text = "Draft - Send to Enable Payment"
             }
+            "quotation" -> {
+                binding.btnRecordPayment.isEnabled = false
+                binding.btnRecordPayment.text = "Quotation"
+                binding.btnRecordPayment.visibility = View.GONE
+                binding.btnViewPayments.visibility = View.GONE
+            }
             "pending", "overdue" -> {
                 binding.btnRecordPayment.isEnabled = true
                 binding.btnRecordPayment.text = "Record Payment"
+                binding.btnRecordPayment.visibility = View.VISIBLE
+                binding.btnViewPayments.visibility = View.VISIBLE
             }
             else -> {
                 binding.btnRecordPayment.isEnabled = false
@@ -263,11 +292,12 @@ class InvoiceDetailActivity : AppCompatActivity() {
             }
         }
 
-        when (invoice.status.lowercase()) {
+        when (status) {
             "paid" -> binding.tvStatus.setBackgroundResource(R.drawable.bg_status_paid)
             "pending" -> binding.tvStatus.setBackgroundResource(R.drawable.bg_status_pending)
             "overdue" -> binding.tvStatus.setBackgroundResource(R.drawable.bg_status_overdue)
             "draft" -> binding.tvStatus.setBackgroundResource(R.drawable.bg_status_draft)
+            "quotation" -> binding.tvStatus.setBackgroundResource(R.drawable.bg_status_quotation)
             else -> binding.tvStatus.setBackgroundResource(R.drawable.bg_status_draft)
         }
         binding.tvStatus.setTextColor(android.graphics.Color.WHITE)
@@ -414,6 +444,9 @@ class InvoiceDetailActivity : AppCompatActivity() {
     }
 
     private fun formatDate(dateString: String): String {
+        if (dateString.isNullOrEmpty() || dateString == "null") {
+            return "N/A"
+        }
         return try {
             val inputFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
             val outputFormat = SimpleDateFormat("MMM dd, yyyy", Locale.US)
@@ -437,9 +470,19 @@ class InvoiceDetailActivity : AppCompatActivity() {
 
     override fun onPrepareOptionsMenu(menu: Menu?): Boolean {
         val status = currentInvoice?.status?.lowercase()
+
+        // Send button: visible for draft, pending, overdue (not for paid or quotation)
         menu?.findItem(R.id.menu_send_invoice)?.isVisible = status == "draft" || status == "pending" || status == "overdue"
+
+        // Edit button: visible for all except paid (quotations can be edited)
         menu?.findItem(R.id.menu_edit)?.isVisible = status != "paid"
-        menu?.findItem(R.id.menu_delete)?.isVisible = status == "draft" || status == "pending"
+
+        // Delete button: visible for draft, pending, and quotation
+        menu?.findItem(R.id.menu_delete)?.isVisible = status == "draft" || status == "pending" || status == "quotation"
+
+        // Download PDF: visible for all
+        menu?.findItem(R.id.menu_download_pdf)?.isVisible = true
+
         return super.onPrepareOptionsMenu(menu)
     }
 
@@ -493,19 +536,33 @@ class InvoiceDetailActivity : AppCompatActivity() {
 
     private fun showDeleteConfirmation() {
         val status = currentInvoice?.status?.lowercase()
-        if (status != "draft" && status != "pending") {
-            Toast.makeText(this, "Only draft and pending invoices can be deleted", Toast.LENGTH_LONG).show()
-            return
-        }
 
-        AlertDialog.Builder(this)
-            .setTitle("Delete Invoice")
-            .setMessage("Are you sure you want to delete this invoice? This action cannot be undone.")
-            .setPositiveButton("Delete") { _, _ ->
-                invoiceViewModel.deleteInvoice(invoiceId)
+        // Allow deletion for draft, pending, and quotation
+        when (status) {
+            "draft", "pending" -> {
+                AlertDialog.Builder(this)
+                    .setTitle("Delete Invoice")
+                    .setMessage("Are you sure you want to delete this invoice? This action cannot be undone.")
+                    .setPositiveButton("Delete") { _, _ ->
+                        invoiceViewModel.deleteInvoice(invoiceId)
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+            "quotation" -> {
+                AlertDialog.Builder(this)
+                    .setTitle("Delete Quotation")
+                    .setMessage("Are you sure you want to delete this quotation? This action cannot be undone.")
+                    .setPositiveButton("Delete") { _, _ ->
+                        invoiceViewModel.deleteInvoice(invoiceId)
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
+            else -> {
+                Toast.makeText(this, "Only draft, pending invoices, and quotations can be deleted", Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     override fun onSupportNavigateUp(): Boolean {

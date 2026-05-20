@@ -768,6 +768,7 @@ def get_invoices():
     customer_id = request.args.get('customer_id', type=int)
     date_from = request.args.get('date_from', '')
     date_to = request.args.get('date_to', '')
+    search = request.args.get('search', '')
     
     offset = (page - 1) * per_page
     today = datetime.now().date()
@@ -775,12 +776,14 @@ def get_invoices():
     conn = get_db_connection()
     cursor = conn.cursor()
     
+    # Update overdue invoices (but don't update quotations)
     cursor.execute("""
         UPDATE invoices 
         SET status = 'overdue' 
         WHERE status = 'pending' 
         AND due_date < ? 
         AND balance_due > 0
+        AND status NOT IN ('quotation', 'quote', 'paid')
     """, (today,))
     conn.commit()
     
@@ -795,9 +798,11 @@ def get_invoices():
     """
     params = [current_user.id]
     
-    if status:
+    # Apply status filter if provided
+    if status and status.strip():
         query += " AND i.status = ?"
         params.append(status)
+    # If no status filter, return ALL invoices including quotations
     
     if customer_id:
         query += " AND i.customer_id = ?"
@@ -811,6 +816,12 @@ def get_invoices():
         query += " AND i.invoice_date <= ?"
         params.append(date_to)
     
+    if search and search.strip():
+        query += " AND (i.invoice_number LIKE ? OR c.customer_name LIKE ?)"
+        search_param = f"%{search}%"
+        params.extend([search_param, search_param])
+    
+    # Count total
     count_query = query.replace(
         "SELECT i.id, i.invoice_number, i.invoice_date, i.due_date, i.status, i.subtotal, i.tax_amount, i.discount_amount, i.shipping_fee, i.total_amount, i.amount_paid, i.balance_due, c.customer_name, c.email as customer_email, i.tax_rate, i.tax_type",
         "SELECT COUNT(*)"
@@ -829,6 +840,7 @@ def get_invoices():
             "total_pages": 0
         }), 200
     
+    # Add sorting - show all invoices including quotations
     query += " ORDER BY i.invoice_date DESC OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
     params.extend([offset, per_page])
     
@@ -874,12 +886,23 @@ def create_invoice_internal(data, status='pending'):
     ensure_company_settings_columns(cursor)
     conn.commit()
     
-    cursor.execute("""
-        SELECT ISNULL(MAX(CAST(REPLACE(invoice_number, 'INV-', '') AS INT)), 0) + 1 
-        FROM invoices WHERE user_id = ?
-    """, (current_user.id,))
-    next_num = cursor.fetchone()[0] or 1
-    invoice_number = f"INV-{next_num:06d}"
+    # Get next number based on type
+    if status == 'quotation' or status == 'quote':
+        # Use QTN prefix for quotations
+        cursor.execute("""
+            SELECT ISNULL(MAX(CAST(REPLACE(invoice_number, 'QTN-', '') AS INT)), 0) + 1 
+            FROM invoices WHERE user_id = ? AND status IN ('quotation', 'quote')
+        """, (current_user.id,))
+        next_num = cursor.fetchone()[0] or 1
+        invoice_number = f"QTN-{next_num:06d}"
+    else:
+        # Use INV prefix for invoices
+        cursor.execute("""
+            SELECT ISNULL(MAX(CAST(REPLACE(invoice_number, 'INV-', '') AS INT)), 0) + 1 
+            FROM invoices WHERE user_id = ? AND status NOT IN ('quotation', 'quote')
+        """, (current_user.id,))
+        next_num = cursor.fetchone()[0] or 1
+        invoice_number = f"INV-{next_num:06d}"
     
     subtotal = 0
     total_tax_amount = 0
@@ -897,10 +920,7 @@ def create_invoice_internal(data, status='pending'):
 
         item_tax = 0
         if is_inclusive:
-            # Formula: Tax = Total - (Total / (1 + Rate))
             item_tax = item_amount - (item_amount / (1 + (item_tax_rate / 100)))
-            # For inclusive, subtotal in DB should be the net amount?
-            # Actually Bookipi shows Subtotal as net if inclusive.
             subtotal += (item_amount - item_tax)
         else:
             item_tax = item_amount * (item_tax_rate / 100)
@@ -923,8 +943,6 @@ def create_invoice_internal(data, status='pending'):
     discount_amount = float(data.get('discount_amount', 0))
     shipping_fee = float(data.get('shipping_fee', 0))
 
-    # Total calculation
-    # If inclusive, subtotal + total_tax_amount = sum of item_amounts
     gross_total = subtotal + total_tax_amount
     total_amount = gross_total - discount_amount + shipping_fee
 
@@ -934,7 +952,14 @@ def create_invoice_internal(data, status='pending'):
     recurring_day = max(1, min(recurring_day, 28))
     recurring_next_send_date = next_monthly_send_date(recurring_day) if is_recurring else None
     recurring_active = 1 if data.get('recurring_active', bool(is_recurring)) and is_recurring else 0
+
+    invoice_status = data.get('status') or status
+    invoice_status = invoice_status.lower() if invoice_status else 'pending'
+    balance_due = total_amount if invoice_status in ['quotation', 'quote'] else total_amount
     
+    # For quotations, due_date can be NULL
+    due_date = data.get('due_date') if invoice_status not in ['quotation', 'quote'] else None
+
     try:
         cursor.execute("""
             INSERT INTO invoices (
@@ -949,7 +974,7 @@ def create_invoice_internal(data, status='pending'):
             data['customer_id'],
             invoice_number,
             data['invoice_date'],
-            data['due_date'],
+            due_date,
             data.get('po_number', ''),
             subtotal,
             tax_rate,
@@ -957,9 +982,9 @@ def create_invoice_internal(data, status='pending'):
             discount_amount,
             shipping_fee,
             total_amount,
-            total_amount,
+            balance_due,
             data.get('notes', ''),
-            status,
+            invoice_status,
             is_recurring,
             recurring_frequency,
             recurring_day if is_recurring else None,
@@ -994,7 +1019,7 @@ def create_invoice_internal(data, status='pending'):
             "success": True,
             "invoice_id": invoice_id,
             "invoice_number": invoice_number,
-            "message": f"Invoice created successfully as {status}"
+            "message": f"{'Quotation' if invoice_status in ['quotation', 'quote'] else 'Invoice'} created successfully"
         }), 201
         
     except Exception as e:
@@ -1017,6 +1042,25 @@ def create_invoice():
         return jsonify({"error": "At least one invoice item is required"}), 400
     
     return create_invoice_internal(data, 'pending')
+
+@app.route('/api/quotations', methods=['POST'])
+@login_required
+def create_quotation():
+    """Create a quotation (not an invoice)"""
+    data = request.get_json()
+    
+    required_fields = ['customer_id', 'invoice_date', 'due_date', 'items']
+    for field in required_fields:
+        if field not in data:
+            return jsonify({"error": f"{field} is required"}), 400
+    
+    if not data['items'] or len(data['items']) == 0:
+        return jsonify({"error": "At least one item is required"}), 400
+    
+    # Force status to 'quotation'
+    data['status'] = 'quotation'
+    
+    return create_invoice_internal(data, 'quotation')
 
 @app.route('/api/invoices/draft', methods=['POST'])
 @login_required
@@ -1672,7 +1716,7 @@ def reapply_payment(payment_id):
 @app.route('/api/invoices/<int:invoice_id>', methods=['DELETE'])
 @login_required
 def delete_invoice(invoice_id):
-    """Delete invoice - allows draft, pending, and overdue with no active payments"""
+    """Delete invoice - allows draft, pending, overdue, and quotation deletion"""
     conn = get_db_connection()
     cursor = conn.cursor()
     
@@ -1690,6 +1734,14 @@ def delete_invoice(invoice_id):
         
         invoice_status = invoice[0].lower() if invoice[0] else ''
         amount_paid = float(invoice[1]) if invoice[1] else 0
+        
+        # Allowed statuses for deletion (quotations can always be deleted)
+        allowed_statuses = ['draft', 'pending', 'overdue', 'quotation', 'quote']
+        
+        if invoice_status not in allowed_statuses:
+            return jsonify({
+                "error": f"Cannot delete {invoice_status} document. Only draft, pending, overdue, or quotation documents can be deleted."
+            }), 400
         
         # Check for ACTIVE payments only (not reversed)
         cursor.execute("""
@@ -1709,20 +1761,11 @@ def delete_invoice(invoice_id):
         amount_result = cursor.fetchone()
         active_payment_total = float(amount_result[0]) if amount_result and amount_result[0] else 0
         
-        # Allowed statuses for deletion (treat overdue same as pending)
-        allowed_statuses = ['draft', 'pending', 'overdue']
-        
-        if invoice_status not in allowed_statuses:
-            return jsonify({
-                "error": f"Cannot delete invoice with status '{invoice_status.upper()}'. "
-                         f"Only draft, pending, or overdue invoices can be deleted."
-            }), 400
-        
-        # Check for active payments
-        if active_payment_count > 0 and active_payment_total > 0:
+        # For quotations, no payment check needed
+        if invoice_status not in ['quotation', 'quote'] and active_payment_count > 0 and active_payment_total > 0:
             return jsonify({
                 "error": f"Cannot delete invoice with {active_payment_count} active payment(s) totaling R{active_payment_total:.2f}. "
-                         f"Please reverse all active payments first using the payment reversal option."
+                         f"Please reverse all active payments first."
             }), 400
         
         # Delete invoice items first
@@ -1739,12 +1782,12 @@ def delete_invoice(invoice_id):
         return jsonify({
             "success": True, 
             "deleted": True, 
-            "message": f"Invoice deleted successfully"
+            "message": f"{'Quotation' if invoice_status in ['quotation', 'quote'] else 'Invoice'} deleted successfully"
         }), 200
         
     except Exception as e:
         conn.rollback()
-        print(f"Error deleting invoice: {e}")
+        print(f"Error deleting: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
@@ -2369,69 +2412,64 @@ def update_company_settings():
 @app.route('/api/dashboard/stats', methods=['GET'])
 @login_required
 def get_dashboard_stats():
-    """Get dashboard statistics"""
+    """Get dashboard statistics including revenue, expenses, and recent items"""
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    today = datetime.now()
-    first_day = datetime(today.year, today.month, 1)
+    today = datetime.now().date()
     
     cursor.execute("""
-        SELECT ISNULL(SUM(total_amount), 0) 
-        FROM invoices 
-        WHERE user_id = ? AND status = 'paid'
+        UPDATE invoices 
+        SET status = 'overdue' 
+        WHERE status = 'pending' 
+        AND due_date < ? 
+        AND balance_due > 0
+        AND status NOT IN ('quotation', 'quote', 'paid')
+    """, (today,))
+    conn.commit()
+
+    cursor.execute("""
+        SELECT ISNULL(SUM(total_amount), 0) FROM invoices 
+        WHERE user_id = ? 
+        AND status IN ('paid', 'pending', 'overdue')
+        AND status NOT IN ('quotation', 'quote')
     """, (current_user.id,))
     total_revenue = float(cursor.fetchone()[0] or 0)
-    
+
     cursor.execute("""
-        SELECT ISNULL(SUM(balance_due), 0) 
-        FROM invoices 
-        WHERE user_id = ? AND status IN ('pending', 'overdue')
+        SELECT ISNULL(SUM(balance_due), 0) FROM invoices 
+        WHERE user_id = ? 
+        AND status IN ('pending', 'overdue')
+        AND status NOT IN ('quotation', 'quote')
     """, (current_user.id,))
     pending_amount = float(cursor.fetchone()[0] or 0)
-    
+
     cursor.execute("""
-        SELECT ISNULL(SUM(amount), 0) 
-        FROM expenses 
+        SELECT ISNULL(SUM(amount), 0) FROM expenses 
         WHERE user_id = ?
     """, (current_user.id,))
     total_expenses = float(cursor.fetchone()[0] or 0)
     
+    # ============================================
+    # MONTHLY PROFIT (current month)
+    # ============================================
+    current_month_start = today.replace(day=1)
     cursor.execute("""
-        SELECT ISNULL(SUM(total_amount), 0) 
-        FROM invoices 
-        WHERE user_id = ? 
-        AND status = 'paid'
-        AND invoice_date >= ? 
-        AND invoice_date <= ?
-    """, (current_user.id, first_day, today))
-    monthly_revenue = float(cursor.fetchone()[0] or 0)
+        SELECT 
+            (SELECT ISNULL(SUM(total_amount), 0) FROM invoices 
+             WHERE user_id = ? AND created_at >= ? AND status IN ('paid', 'pending', 'overdue')
+             AND status NOT IN ('quotation', 'quote')) -
+            (SELECT ISNULL(SUM(amount), 0) FROM expenses 
+             WHERE user_id = ? AND expense_date >= ?) as monthly_profit
+    """, (current_user.id, current_month_start, current_user.id, current_month_start))
+    monthly_profit = float(cursor.fetchone()[0] or 0)
     
+    # ============================================
+    # RECENT INVOICES (last 5) - INCLUDING quotations
+    # ============================================
     cursor.execute("""
-        SELECT ISNULL(SUM(amount), 0) 
-        FROM expenses 
-        WHERE user_id = ? 
-        AND expense_date >= ? 
-        AND expense_date <= ?
-    """, (current_user.id, first_day, today))
-    monthly_expenses = float(cursor.fetchone()[0] or 0)
-    
-    monthly_profit = monthly_revenue - monthly_expenses
-    
-    cursor.execute("""
-        SELECT status, COUNT(*) 
-        FROM invoices 
-        WHERE user_id = ?
-        GROUP BY status
-    """, (current_user.id,))
-    
-    invoice_counts = {}
-    for row in cursor.fetchall():
-        invoice_counts[row[0]] = row[1]
-    
-    cursor.execute("""
-        SELECT TOP 5 i.id, i.invoice_number, i.invoice_date, i.total_amount, i.status,
-               c.customer_name
+        SELECT TOP 5 i.id, i.invoice_number, i.invoice_date, i.due_date, i.status,
+               i.total_amount, i.balance_due, c.customer_name
         FROM invoices i
         JOIN customers c ON i.customer_id = c.id
         WHERE i.user_id = ?
@@ -2444,13 +2482,18 @@ def get_dashboard_stats():
             "id": row[0],
             "invoice_number": row[1],
             "invoice_date": row[2].isoformat() if row[2] else None,
-            "total_amount": float(row[3]) if row[3] else 0,
-            "status": row[4],
-            "customer_name": row[5]
+            "due_date": row[3].isoformat() if row[3] else None,
+            "status": row[4],  # This will be 'overdue' if updated above
+            "total_amount": float(row[5]) if row[5] else 0,
+            "balance_due": float(row[6]) if row[6] else 0,
+            "customer_name": row[7]
         })
     
+    # ============================================
+    # RECENT EXPENSES
+    # ============================================
     cursor.execute("""
-        SELECT TOP 5 id, expense_date, category, amount, description
+        SELECT TOP 5 id, expense_date, category, amount, description, vendor_name
         FROM expenses
         WHERE user_id = ?
         ORDER BY expense_date DESC
@@ -2463,8 +2506,33 @@ def get_dashboard_stats():
             "expense_date": row[1].isoformat() if row[1] else None,
             "category": row[2],
             "amount": float(row[3]) if row[3] else 0,
-            "description": row[4] or ""
+            "description": row[4],
+            "vendor_name": row[5] if len(row) > 5 else None
         })
+    
+    # ============================================
+    # INVOICE COUNTS BY STATUS
+    # ============================================
+    cursor.execute("""
+        SELECT status, COUNT(*) FROM invoices 
+        WHERE user_id = ?
+        GROUP BY status
+    """, (current_user.id,))
+    
+    invoice_counts = {}
+    for row in cursor.fetchall():
+        status = row[0] or 'unknown'
+        invoice_counts[status] = row[1]
+
+    cursor.execute("""
+        UPDATE invoices 
+        SET status = 'pending' 
+        WHERE status = 'overdue' 
+        AND due_date < ? 
+        AND balance_due > 0
+        AND status NOT IN ('quotation', 'quote', 'paid')
+    """, (today,))
+    conn.commit()
     
     conn.close()
     
@@ -2472,12 +2540,10 @@ def get_dashboard_stats():
         "total_revenue": total_revenue,
         "pending_amount": pending_amount,
         "total_expenses": total_expenses,
-        "monthly_revenue": monthly_revenue,
-        "monthly_expenses": monthly_expenses,
         "monthly_profit": monthly_profit,
-        "invoice_counts": invoice_counts,
         "recent_invoices": recent_invoices,
-        "recent_expenses": recent_expenses
+        "recent_expenses": recent_expenses,
+        "invoice_counts": invoice_counts
     }), 200
 
 # ============================================
@@ -3682,12 +3748,11 @@ def mark_follow_up_sent(follow_up_id):
             conn.close()
             return jsonify({"error": "Follow-up already marked as sent"}), 400
         
-        # Update follow-up as sent
+        # Update follow-up as sent - remove updated_at reference
         cursor.execute("""
             UPDATE invoice_follow_ups
             SET message_sent = 1,
-                message_sent_at = GETDATE(),
-                updated_at = GETDATE()
+                message_sent_at = GETDATE()
             WHERE id = ?
         """, (follow_up_id,))
         
@@ -3729,11 +3794,10 @@ def complete_follow_up(follow_up_id):
             conn.close()
             return jsonify({"error": "Follow-up already completed"}), 400
         
-        # Update follow-up as completed
+        # Update follow-up as completed - remove updated_at reference
         cursor.execute("""
             UPDATE invoice_follow_ups
-            SET completed = 1,
-                updated_at = GETDATE()
+            SET completed = 1
             WHERE id = ?
         """, (follow_up_id,))
         
@@ -4028,11 +4092,11 @@ def record_inbound_reply(cursor, user_id, message_id, sender_email, subject, bod
         VALUES (?, ?, 'customer_reply', ?, ?, ?, ?)
     """, (invoice_id, customer_id, subject, body, received_at, user_id))
 
+    # Remove updated_at reference - the table doesn't have this column
     cursor.execute("""
         UPDATE invoice_follow_ups
         SET customer_responded = 1,
-            responded_at = COALESCE(responded_at, ?),
-            updated_at = GETDATE()
+            responded_at = COALESCE(responded_at, ?)
         WHERE invoice_id = ?
     """, (received_at, invoice_id))
 

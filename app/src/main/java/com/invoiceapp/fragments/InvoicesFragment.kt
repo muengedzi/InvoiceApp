@@ -3,6 +3,8 @@ package com.invoiceapp.fragments
 import android.app.DatePickerDialog
 import android.content.Intent
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuInflater
@@ -35,12 +37,12 @@ class InvoicesFragment : Fragment() {
     private lateinit var invoiceViewModel: InvoiceViewModel
     private lateinit var invoiceAdapter: InvoiceAdapter
 
-    // Filter variables
+    // State for local filtering
+    private var allInvoices = listOf<Invoice>()
     private var filterStatus: String? = null
     private var filterDateFrom: String? = null
     private var filterDateTo: String? = null
-    private var searchQuery: String? = null
-    private var isFilterApplied = false
+    private var searchQuery: String = ""
 
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
     private val displayDateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.US)
@@ -70,18 +72,17 @@ class InvoicesFragment : Fragment() {
     }
 
     private fun setupSearch() {
-        binding.etSearch.addTextChangedListener(object : android.text.TextWatcher {
+        binding.etSearch.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                searchQuery = s?.toString()?.takeIf { it.isNotBlank() }
-                loadInvoices()
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                searchQuery = s?.toString().orEmpty().trim()
+                applyFiltersAndSorting()
             }
-            override fun afterTextChanged(s: android.text.Editable?) {}
         })
 
-        binding.etSearch.setOnEditorActionListener { v, actionId, event ->
+        binding.etSearch.setOnEditorActionListener { v, actionId, _ ->
             if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) {
-                // Already handled by TextWatcher, but let's hide keyboard
                 val imm = requireContext().getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
                 imm.hideSoftInputFromWindow(v.windowToken, 0)
                 true
@@ -92,19 +93,17 @@ class InvoicesFragment : Fragment() {
     }
 
     private fun setupFilterChips() {
-        binding.chipGroupFilters.setOnCheckedStateChangeListener { group, checkedIds ->
+        binding.chipGroupFilters.setOnCheckedStateChangeListener { _, checkedIds ->
             val checkedId = checkedIds.firstOrNull()
             filterStatus = when (checkedId) {
                 R.id.chipFilterPaid -> "paid"
                 R.id.chipFilterPending -> "pending"
                 R.id.chipFilterOverdue -> "overdue"
                 R.id.chipFilterDraft -> "draft"
+                R.id.chipFilterQuotation -> "quotation"
                 else -> null
             }
-            
-            // Sync with isFilterApplied logic
-            isFilterApplied = filterStatus != null || !filterDateFrom.isNullOrEmpty() || !filterDateTo.isNullOrEmpty()
-            loadInvoices()
+            applyFiltersAndSorting()
         }
     }
 
@@ -114,16 +113,61 @@ class InvoicesFragment : Fragment() {
     }
 
     private fun loadInvoices() {
-        if (isFilterApplied || !searchQuery.isNullOrEmpty()) {
-            invoiceViewModel.loadInvoicesWithFilters(
-                page = 1,
-                status = filterStatus,
-                dateFrom = filterDateFrom,
-                dateTo = filterDateTo,
-                search = searchQuery
-            )
+        // Load all for local processing as requested
+        invoiceViewModel.loadInvoicesWithFilters(page = 1, perPage = 1000, resetList = true)
+    }
+
+    private fun applyFiltersAndSorting() {
+        var filteredList = allInvoices
+
+        // 1. Filter by Status
+        if (filterStatus != null) {
+            filteredList = filteredList.filter { it.status.lowercase() == filterStatus }
+        }
+
+        // 2. Filter by Date Range
+        if (!filterDateFrom.isNullOrEmpty()) {
+            filteredList = filteredList.filter { it.invoice_date >= filterDateFrom!! }
+        }
+        if (!filterDateTo.isNullOrEmpty()) {
+            filteredList = filteredList.filter { it.invoice_date <= filterDateTo!! }
+        }
+
+        // 3. Filter by Search Query
+        if (searchQuery.isNotEmpty()) {
+            val q = searchQuery.lowercase()
+            filteredList = filteredList.filter {
+                it.customer_name?.lowercase()?.contains(q) == true ||
+                        it.invoice_number.lowercase().contains(q)
+            }
+        }
+
+        // 4. Sort: Overdue > Pending > Draft > Quotation > Paid (Archived)
+        val sortedList = filteredList.sortedWith(compareBy<Invoice> {
+            when (it.status.lowercase()) {
+                "overdue" -> 0
+                "pending" -> 1
+                "draft" -> 2
+                "quotation", "quote" -> 3
+                "paid" -> 4
+                else -> 5
+            }
+        }.thenByDescending { it.invoice_date })
+
+        invoiceAdapter.submitList(sortedList)
+
+        // UI Feedback
+        if (sortedList.isEmpty()) {
+            binding.tvEmpty.visibility = View.VISIBLE
+            binding.rvInvoices.visibility = View.GONE
+            binding.tvEmpty.text = if (allInvoices.isEmpty()) {
+                "No invoices found.\nTap + to create an invoice."
+            } else {
+                "No matching invoices found."
+            }
         } else {
-            invoiceViewModel.loadInvoices(page = 1, status = null)
+            binding.tvEmpty.visibility = View.GONE
+            binding.rvInvoices.visibility = View.VISIBLE
         }
     }
 
@@ -154,33 +198,16 @@ class InvoicesFragment : Fragment() {
                 is ApiResponse.Loading -> {
                     binding.progressBar.visibility = View.VISIBLE
                     binding.tvError.visibility = View.GONE
-                    binding.tvEmpty.visibility = View.GONE
                 }
                 is ApiResponse.Success -> {
                     binding.progressBar.visibility = View.GONE
-
-                    val invoices = result.data
-                    invoiceAdapter.submitList(invoices)
-
-                    if (invoices.isEmpty()) {
-                        binding.tvEmpty.visibility = View.VISIBLE
-                        binding.rvInvoices.visibility = View.GONE
-
-                        if (isFilterApplied) {
-                            binding.tvEmpty.text = "No invoices match the selected filters.\nTap filter icon to change criteria."
-                        } else {
-                            binding.tvEmpty.text = "No invoices found.\nTap + to create an invoice."
-                        }
-                    } else {
-                        binding.tvEmpty.visibility = View.GONE
-                        binding.rvInvoices.visibility = View.VISIBLE
-                    }
+                    allInvoices = result.data
+                    applyFiltersAndSorting()
                 }
                 is ApiResponse.Error -> {
                     binding.progressBar.visibility = View.GONE
                     binding.tvError.text = result.message
                     binding.tvError.visibility = View.VISIBLE
-                    binding.tvEmpty.visibility = View.GONE
                 }
             }
         }
@@ -213,6 +240,7 @@ class InvoicesFragment : Fragment() {
         val radioPending = dialogView.findViewById<RadioButton>(R.id.radioPending)
         val radioOverdue = dialogView.findViewById<RadioButton>(R.id.radioOverdue)
         val radioDraft = dialogView.findViewById<RadioButton>(R.id.radioDraft)
+        val radioQuotation = dialogView.findViewById<RadioButton>(R.id.radioQuotation)
         val btnStartDate = dialogView.findViewById<Button>(R.id.btnStartDate)
         val btnEndDate = dialogView.findViewById<Button>(R.id.btnEndDate)
         val tvStartDate = dialogView.findViewById<TextView>(R.id.tvStartDate)
@@ -224,6 +252,7 @@ class InvoicesFragment : Fragment() {
             "pending" -> radioPending.isChecked = true
             "overdue" -> radioOverdue.isChecked = true
             "draft" -> radioDraft.isChecked = true
+            "quotation" -> radioQuotation.isChecked = true
             else -> radioAll.isChecked = true
         }
 
@@ -237,7 +266,6 @@ class InvoicesFragment : Fragment() {
             tvEndDate.visibility = View.VISIBLE
         }
 
-        // Start date picker
         btnStartDate.setOnClickListener {
             showDatePicker { selectedDate ->
                 filterDateFrom = selectedDate
@@ -246,7 +274,6 @@ class InvoicesFragment : Fragment() {
             }
         }
 
-        // End date picker
         btnEndDate.setOnClickListener {
             showDatePicker { selectedDate ->
                 filterDateTo = selectedDate
@@ -264,37 +291,16 @@ class InvoicesFragment : Fragment() {
                     R.id.radioPending -> "pending"
                     R.id.radioOverdue -> "overdue"
                     R.id.radioDraft -> "draft"
+                    R.id.radioQuotation -> "quotation"
                     else -> null
                 }
-
-                isFilterApplied = filterStatus != null || !filterDateFrom.isNullOrEmpty() || !filterDateTo.isNullOrEmpty()
-
-                loadInvoices()
-
-                val message = buildFilterMessage()
-                if (message.isNotEmpty()) {
-                    Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
-                }
+                applyFiltersAndSorting()
             }
             .setNegativeButton("Cancel", null)
             .setNeutralButton("Clear All") { _, _ ->
                 clearFilters()
             }
             .show()
-    }
-
-    private fun buildFilterMessage(): String {
-        val parts = mutableListOf<String>()
-        if (filterStatus != null) {
-            parts.add("Status: ${filterStatus?.capitalize()}")
-        }
-        if (!filterDateFrom.isNullOrEmpty()) {
-            parts.add("From: ${formatDisplayDate(filterDateFrom!!)}")
-        }
-        if (!filterDateTo.isNullOrEmpty()) {
-            parts.add("To: ${formatDisplayDate(filterDateTo!!)}")
-        }
-        return if (parts.isNotEmpty()) "Filter applied: ${parts.joinToString(", ")}" else ""
     }
 
     private fun showDatePicker(onDateSelected: (String) -> Unit) {
@@ -324,11 +330,10 @@ class InvoicesFragment : Fragment() {
         filterStatus = null
         filterDateFrom = null
         filterDateTo = null
-        searchQuery = null
-        isFilterApplied = false
+        searchQuery = ""
         binding.etSearch.setText("")
         binding.chipGroupFilters.clearCheck()
-        loadInvoices()
+        applyFiltersAndSorting()
         Toast.makeText(requireContext(), "Filters cleared", Toast.LENGTH_SHORT).show()
     }
 
