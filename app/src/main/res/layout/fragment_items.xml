@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="@color/app_background"
+    android:background="?android:attr/colorBackground"
     android:padding="12dp">
 
     <com.google.android.material.card.MaterialCardView
@@ -23,43 +23,27 @@
             android:orientation="vertical"
             android:padding="12dp">
 
-            <LinearLayout
+            <!-- Search field with clear text icon (like Customers fragment) -->
+            <com.google.android.material.textfield.TextInputLayout
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
+                android:hint="Search items"
+                app:boxBackgroundColor="@color/white"
+                app:endIconMode="clear_text"
+                app:startIconDrawable="@android:drawable/ic_menu_search">
 
-                <com.google.android.material.textfield.TextInputLayout
-                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
-                    android:layout_width="0dp"
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etSearch"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:hint="Search items"
-                    app:boxBackgroundColor="@color/white"
-                    app:startIconDrawable="@android:drawable/ic_menu_search">
+                    android:imeOptions="actionSearch"
+                    android:inputType="text"
+                    android:maxLines="1"
+                    android:singleLine="true" />
+            </com.google.android.material.textfield.TextInputLayout>
 
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/etSearch"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:imeOptions="actionSearch"
-                        android:inputType="text"
-                        android:maxLines="1"
-                        android:singleLine="true" />
-                </com.google.android.material.textfield.TextInputLayout>
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnSearch"
-                    style="@style/Widget.MaterialComponents.Button"
-                    android:layout_width="wrap_content"
-                    android:layout_height="56dp"
-                    android:layout_marginStart="8dp"
-                    android:minWidth="88dp"
-                    android:text="Search"
-                    android:textSize="12sp"
-                    app:cornerRadius="8dp" />
-            </LinearLayout>
-
+            <!-- Filter chips row -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -88,7 +72,7 @@
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Filter by category"
                     android:src="@android:drawable/ic_menu_sort_by_size"
-                    app:tint="@color/primary" />
+                    app:tint="?attr/colorPrimary" />
 
                 <ImageButton
                     android:id="@+id/btnClearFilter"

@@ -28,7 +28,7 @@ import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.*
 
-class InvoiceDetailActivity : AppCompatActivity() {
+class InvoiceDetailActivity : BaseActivity() {
     private lateinit var binding: ActivityInvoiceDetailBinding
     private lateinit var sessionManager: SessionManager
     private lateinit var invoiceViewModel: InvoiceViewModel
@@ -305,41 +305,65 @@ class InvoiceDetailActivity : AppCompatActivity() {
 
     private fun showPaymentDialog() {
         val dialogView = layoutInflater.inflate(R.layout.dialog_record_payment, null)
+        val tilAmount = dialogView.findViewById<com.google.android.material.textfield.TextInputLayout>(R.id.tilAmount)
         val etAmount = dialogView.findViewById<EditText>(R.id.etAmount)
+        val etPaymentType = dialogView.findViewById<android.widget.AutoCompleteTextView>(R.id.etPaymentType)
         val etPaymentMethod = dialogView.findViewById<android.widget.AutoCompleteTextView>(R.id.etPaymentMethod)
         val tvBalanceHint = dialogView.findViewById<TextView>(R.id.tvBalanceHint)
-        val paymentMethods = listOf("cash", "card", "transfer")
+        
+        val paymentTypes = listOf(getString(R.string.full_payment), getString(R.string.partial_payment))
+        val typeAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, paymentTypes)
+        etPaymentType.setAdapter(typeAdapter)
+        etPaymentType.setText(paymentTypes.first(), false)
+
+        val paymentMethods = listOf("Cash", "Card Payment", "Bank Transfer")
         etPaymentMethod.setAdapter(
             ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, paymentMethods)
         )
         etPaymentMethod.setText(paymentMethods.first(), false)
 
         currentInvoice?.let {
-            tvBalanceHint.text = "Balance Due: ${formatCurrency(it.balance_due)}"
-            etAmount.hint = "Enter amount (max ${formatCurrency(it.balance_due)})"
+            val balance = it.balance_due
+            tvBalanceHint.text = getString(R.string.balance_due_format, formatCurrency(balance))
+            tilAmount.hint = getString(R.string.amount_to_pay)
+            
+            // Set initial amount for Full Payment
+            etAmount.setText("%.2f".format(Locale.US, balance))
+            etAmount.isEnabled = false 
+            
+            etPaymentType.setOnItemClickListener { _, _, position, _ ->
+                if (position == 0) { // Full Payment
+                    etAmount.setText("%.2f".format(Locale.US, balance))
+                    etAmount.isEnabled = false
+                } else { // Partial Payment
+                    etAmount.setText("")
+                    etAmount.isEnabled = true
+                    etAmount.requestFocus()
+                }
+            }
         }
 
-        AlertDialog.Builder(this)
-            .setTitle("Record Payment")
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            .setTitle(getString(R.string.record_payment_title))
             .setView(dialogView)
             .setPositiveButton("Record") { _, _ ->
                 val amountStr = etAmount.text.toString()
                 val paymentMethod = etPaymentMethod.text.toString().trim()
 
                 if (amountStr.isEmpty()) {
-                    Toast.makeText(this, "Please enter an amount", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, getString(R.string.please_enter_amount), Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }
 
                 val amount = amountStr.toDoubleOrNull()
                 if (amount == null || amount <= 0) {
-                    Toast.makeText(this, "Please enter a valid amount", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, getString(R.string.please_enter_valid_amount), Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }
 
                 currentInvoice?.let {
                     if (amount > it.balance_due) {
-                        Toast.makeText(this, "Amount exceeds balance due", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, getString(R.string.amount_exceeds_balance, formatCurrency(it.balance_due)), Toast.LENGTH_SHORT).show()
                         return@setPositiveButton
                     }
                 }

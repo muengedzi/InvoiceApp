@@ -1,6 +1,7 @@
 package com.invoiceapp.fragments
 
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -37,10 +38,29 @@ class DashboardFragment : Fragment() {
         dashboardViewModel = ViewModelProvider(this)[DashboardViewModel::class.java]
 
         setupRecyclerViews()
+        setupClickListeners()
         observeViewModel()
         dashboardViewModel.loadDashboardStats()
 
         return binding.root
+    }
+
+    private fun setupClickListeners() {
+        binding.cardPaidInvoices.setOnClickListener {
+            (requireActivity() as? MainActivity)?.navigateToInvoices("paid")
+        }
+
+        binding.cardPendingInvoices.setOnClickListener {
+            (requireActivity() as? MainActivity)?.navigateToInvoices("pending")
+        }
+
+        binding.cardOverdueInvoices.setOnClickListener {
+            (requireActivity() as? MainActivity)?.navigateToInvoices("overdue")
+        }
+
+        binding.cardExpenses.setOnClickListener {
+            (requireActivity() as? MainActivity)?.navigateToExpenses()
+        }
     }
 
     private fun setupRecyclerViews() {
@@ -86,20 +106,24 @@ class DashboardFragment : Fragment() {
     }
 
     private fun updateUI(stats: com.invoiceapp.models.DashboardStats) {
-        // Note: pending_amount should already exclude quotations from the backend
-        // If backend still includes quotations, we need to filter them out
+        // Card 1: Paid Invoices - Main: Amount, Subtext: Count
+        binding.tvStatValue.text = formatCurrency(stats.paid_amount)
+        binding.tvStatSubtext.text = "${stats.paid_count} paid invoice(s)"
+        binding.tvStatLabel.text = "Paid Invoices"
 
-        // Update stat cards
-        binding.tvStatValue.text = formatCurrency(stats.total_revenue)
+        // Card 2: Pending - Main: Amount, Subtext: Count
+        binding.tvStatValuePending.text = formatCurrency(stats.pending_amount)
+        binding.tvStatSubtextPending.text = "${stats.pending_count} pending invoice(s)"
+        binding.tvStatLabelPending.text = "Pending"
 
-        // Ensure pending_amount excludes quotations
-        // This depends on your DashboardStats model - if backend still includes quotations,
-        // you'd need to calculate pending amount from stats.recent_invoices excluding quotations
-        val pendingAmount = stats.pending_amount // Ensure backend excludes quotations
-        binding.tvStatValuePending.text = formatCurrency(pendingAmount)
+        // Card 3: Overdue - Main: Amount, Subtext: Count
+        binding.tvStatValueExpenses.text = formatCurrency(stats.overdue_amount)
+        binding.tvStatSubtextExpenses.text = "${stats.overdue_count} overdue invoice(s)"
+        binding.tvStatLabelExpenses.text = "Overdue"
 
-        binding.tvStatValueExpenses.text = formatCurrency(stats.total_expenses)
-        binding.tvStatValueProfit.text = formatCurrency(stats.monthly_profit)
+        // Card 4: Expenses - Main: Amount (no count for expenses)
+        binding.tvStatValueProfit.text = formatCurrency(stats.total_expenses)
+        binding.tvStatLabelProfit.text = "Expenses"
 
         // Update recent invoices
         invoiceAdapter.submitList(stats.recent_invoices)
@@ -129,7 +153,7 @@ class DashboardFragment : Fragment() {
             "pending" to "#FF9800",
             "overdue" to "#F44336",
             "draft" to "#2196F3",
-            "quotation" to "#9C27B0",  // Purple for quotations
+            "quotation" to "#9C27B0",
             "quote" to "#9C27B0"
         )
 

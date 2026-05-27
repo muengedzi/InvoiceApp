@@ -20,7 +20,7 @@
         android:text="InvoiceApp"
         android:textSize="28sp"
         android:textStyle="bold"
-        android:textColor="@color/text_primary"/>
+        android:textColor="?attr/colorOnSurface"/>
 
     <TextView
         android:id="@+id/tvSplashSubtitle"
@@ -28,7 +28,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
         android:text="Preparing your workspace"
-        android:textColor="@color/text_secondary"
+        android:textColor="?attr/colorTextSecondary"
         android:textSize="14sp" />
 
     <ProgressBar
@@ -36,6 +36,6 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="48dp"
-        android:indeterminateTint="@color/primary"/>
+        android:indeterminateTint="?attr/colorPrimary"/>
 
 </LinearLayout>

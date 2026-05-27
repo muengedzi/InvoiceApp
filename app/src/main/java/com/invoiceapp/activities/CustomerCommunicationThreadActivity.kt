@@ -21,7 +21,7 @@ import com.invoiceapp.utils.SessionManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-class CustomerCommunicationThreadActivity : AppCompatActivity() {
+class CustomerCommunicationThreadActivity : BaseActivity() {
 
     private lateinit var binding: ActivityCommunicationThreadBinding
     private lateinit var sessionManager: SessionManager

@@ -2,10 +2,9 @@ package com.invoiceapp.activities
 
 import android.os.Bundle
 import android.content.Intent
-import androidx.appcompat.app.AppCompatActivity
 import com.invoiceapp.databinding.ActivityCustomersBinding
 
-class CustomersActivity : AppCompatActivity() {
+class CustomersActivity : BaseActivity() {
     private lateinit var binding: ActivityCustomersBinding
 
     override fun onCreate(savedInstanceState: Bundle?) {

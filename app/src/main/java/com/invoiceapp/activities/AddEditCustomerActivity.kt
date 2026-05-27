@@ -11,7 +11,7 @@ import com.invoiceapp.models.CustomerRequest
 import com.invoiceapp.network.RetrofitClient
 import kotlinx.coroutines.launch
 
-class AddEditCustomerActivity : AppCompatActivity() {
+class AddEditCustomerActivity : BaseActivity() {
     private lateinit var binding: ActivityAddEditCustomerBinding
     private var customerId: Int? = null
 

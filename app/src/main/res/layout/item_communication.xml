@@ -4,10 +4,10 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginBottom="8dp"
-    app:cardBackgroundColor="@color/surface_card"
+    app:cardBackgroundColor="?attr/colorSurface"
     app:cardCornerRadius="12dp"
     app:cardElevation="1dp"
-    app:strokeColor="@color/border_soft"
+    app:strokeColor="?attr/colorBorderSoft"
     app:strokeWidth="1dp">
 
     <LinearLayout
@@ -28,7 +28,7 @@
                 android:layout_weight="1"
                 android:text="Sent"
                 android:textSize="12sp"
-                android:textColor="@color/primary"
+                android:textColor="?attr/colorPrimary"
                 android:textStyle="bold" />
 
             <TextView
@@ -37,7 +37,7 @@
                 android:layout_height="wrap_content"
                 android:text="Jan 01, 2024"
                 android:textSize="10sp"
-                android:textColor="@color/text_secondary" />
+                android:textColor="?attr/colorTextSecondary" />
 
         </LinearLayout>
 
@@ -47,9 +47,18 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:text="Subject"
-            android:textColor="@color/text_primary"
+            android:textColor="?attr/colorOnSurface"
             android:textSize="14sp"
             android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvContext"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="Customer - Invoice"
+            android:textColor="?attr/colorTextSecondary"
+            android:textSize="11sp" />
 
         <TextView
             android:id="@+id/tvMessage"
@@ -58,14 +67,14 @@
             android:layout_marginTop="4dp"
             android:text="Message"
             android:textSize="12sp"
-            android:textColor="@color/text_secondary" />
+            android:textColor="?attr/colorTextSecondary" />
 
         <LinearLayout
             android:id="@+id/tvReplyIndicator"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:background="@color/surface_soft"
+            android:background="?attr/colorSurfaceSoft"
             android:padding="8dp"
             android:orientation="vertical"
             android:visibility="gone">
@@ -84,7 +93,7 @@
                 android:layout_height="wrap_content"
                 android:text="Reply"
                 android:textSize="11sp"
-                android:textColor="@color/text_primary"
+                android:textColor="?attr/colorOnSurface"
                 android:layout_marginTop="4dp" />
 
         </LinearLayout>

@@ -7,10 +7,13 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <color name="gray_100">#F5F5F5</color>
     <color name="gray_300">#E0E0E0</color>
     <color name="gray_400">#BDBDBD</color>
     <color name="gray_500">#9E9E9E</color>
     <color name="gray_600">#757575</color>
+
+    <!-- Light Theme Colors (Default) -->
     <color name="primary">#2563EB</color>
     <color name="primary_dark">#1D4ED8</color>
     <color name="accent">#F59E0B</color>
@@ -20,6 +23,36 @@
     <color name="text_primary">#0F172A</color>
     <color name="text_secondary">#64748B</color>
     <color name="border_soft">#E2E8F0</color>
+
+    <!-- Dark Theme Colors -->
+    <color name="primary_dark_theme">#1E1E2E</color>
+    <color name="primary_dark_dark_theme">#14141D</color>
+    <color name="accent_dark">#BB86FC</color>
+    <color name="app_background_dark">#121212</color>
+    <color name="surface_card_dark">#1E1E2E</color>
+    <color name="text_primary_dark">#FFFFFF</color>
+    <color name="text_secondary_dark">#A0A0B0</color>
+    <color name="border_soft_dark">#2A2A3A</color>
+
+    <!-- Blue Theme Colors -->
+    <color name="primary_blue">#1976D2</color>
+    <color name="primary_dark_blue">#0D47A1</color>
+    <color name="accent_blue">#42A5F5</color>
+    <color name="app_background_blue">#E3F2FD</color>
+
+    <!-- Green Theme Colors -->
+    <color name="primary_green">#43A047</color>
+    <color name="primary_dark_green">#2E7D32</color>
+    <color name="accent_green">#66BB6A</color>
+    <color name="app_background_green">#E8F5E9</color>
+
+    <!-- Purple Theme Colors -->
+    <color name="primary_purple">#7B1FA2</color>
+    <color name="primary_dark_purple">#4A148C</color>
+    <color name="accent_purple">#AB47BC</color>
+    <color name="app_background_purple">#F3E5F5</color>
+
+    <!-- Status Colors -->
     <color name="error">#F44336</color>
     <color name="success">#4CAF50</color>
     <color name="warning">#FF9800</color>

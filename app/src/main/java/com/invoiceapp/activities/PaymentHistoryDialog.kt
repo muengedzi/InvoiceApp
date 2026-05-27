@@ -43,6 +43,7 @@ class PaymentHistoryDialog : DialogFragment() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        setStyle(STYLE_NORMAL, R.style.Theme_InvoiceApp_FullScreenDialog)
         invoiceId = arguments?.getInt("invoice_id") ?: -1
         viewModel = ViewModelProvider(requireActivity())[InvoiceViewModel::class.java]
     }

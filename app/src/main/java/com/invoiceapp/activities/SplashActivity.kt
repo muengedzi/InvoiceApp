@@ -12,11 +12,10 @@ import android.util.Log
 import android.view.View
 import android.view.animation.DecelerateInterpolator
 import android.view.animation.LinearInterpolator
-import androidx.appcompat.app.AppCompatActivity
 import com.invoiceapp.R
 import com.invoiceapp.utils.SessionManager
 
-class SplashActivity : AppCompatActivity() {
+class SplashActivity : BaseActivity() {
 
     private lateinit var sessionManager: SessionManager
     private val TAG = "SplashActivity"

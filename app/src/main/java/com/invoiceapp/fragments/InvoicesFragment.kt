@@ -47,9 +47,22 @@ class InvoicesFragment : Fragment() {
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
     private val displayDateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.US)
 
+    companion object {
+        private const val ARG_STATUS_FILTER = "status_filter"
+
+        fun newInstance(statusFilter: String? = null): InvoicesFragment {
+            return InvoicesFragment().apply {
+                arguments = Bundle().apply {
+                    putString(ARG_STATUS_FILTER, statusFilter)
+                }
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setHasOptionsMenu(true)
+        filterStatus = arguments?.getString(ARG_STATUS_FILTER)
     }
 
     override fun onCreateView(
@@ -105,6 +118,12 @@ class InvoicesFragment : Fragment() {
             }
             applyFiltersAndSorting()
         }
+
+        when (filterStatus) {
+            "paid" -> binding.chipFilterPaid.isChecked = true
+            "pending" -> binding.chipFilterPending.isChecked = true
+            "overdue" -> binding.chipFilterOverdue.isChecked = true
+        }
     }
 
     override fun onResume() {
@@ -122,7 +141,14 @@ class InvoicesFragment : Fragment() {
 
         // 1. Filter by Status
         if (filterStatus != null) {
-            filteredList = filteredList.filter { it.status.lowercase() == filterStatus }
+            filteredList = filteredList.filter { 
+                val s = it.status.lowercase()
+                if (filterStatus == "quotation") {
+                    s == "quotation" || s == "quote" || s == "quotations"
+                } else {
+                    s == filterStatus
+                }
+            }
         }
 
         // 2. Filter by Date Range
@@ -143,16 +169,25 @@ class InvoicesFragment : Fragment() {
         }
 
         // 4. Sort: Overdue > Pending > Draft > Quotation > Paid (Archived)
+        // Within each group, sort by date. 
+        // For Paid invoices, sort by updated_at to show "recently paid" at the top.
         val sortedList = filteredList.sortedWith(compareBy<Invoice> {
             when (it.status.lowercase()) {
                 "overdue" -> 0
                 "pending" -> 1
                 "draft" -> 2
-                "quotation", "quote" -> 3
+                "quotation", "quote", "quotations" -> 3
                 "paid" -> 4
                 else -> 5
             }
-        }.thenByDescending { it.invoice_date })
+        }.thenByDescending { 
+            // If status is paid, use updated_at for "recently paid" logic
+            if (it.status.lowercase() == "paid") {
+                it.updated_at ?: it.invoice_date
+            } else {
+                it.invoice_date 
+            }
+        })
 
         invoiceAdapter.submitList(sortedList)
 

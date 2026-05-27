@@ -14,7 +14,7 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
-class AddEditExpenseActivity : AppCompatActivity() {
+class AddEditExpenseActivity : BaseActivity() {
     private lateinit var binding: ActivityAddEditExpenseBinding
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
     private val displayDateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.US)
@@ -58,6 +58,16 @@ class AddEditExpenseActivity : AppCompatActivity() {
 
         binding.btnDelete.setOnClickListener {
             confirmDeleteExpense()
+        }
+
+        binding.chkNoExpenseDate.setOnCheckedChangeListener { _, isChecked ->
+            binding.btnSelectDate.isEnabled = !isChecked
+            if (isChecked) {
+                binding.tvSelectedDate.text = "No date"
+                binding.etExpenseDate.text?.clear()
+            } else if (binding.etExpenseDate.text.isNullOrBlank()) {
+                setDefaultDate()
+            }
         }
 
         binding.chkIsRecurring.setOnCheckedChangeListener { _, isChecked ->
@@ -124,9 +134,15 @@ class AddEditExpenseActivity : AppCompatActivity() {
                 val response = RetrofitClient.apiService.getExpense(id)
                 val expense = response.body()
                 if (response.isSuccessful && expense != null) {
-                    binding.etExpenseDate.setText(expense.expense_date.take(10))
-                    runCatching { dateFormat.parse(expense.expense_date.take(10)) }.getOrNull()?.let {
-                        binding.tvSelectedDate.text = displayDateFormat.format(it)
+                    val expenseDate = expense.expense_date?.take(10).orEmpty()
+                    binding.chkNoExpenseDate.isChecked = expenseDate.isBlank()
+                    binding.etExpenseDate.setText(expenseDate)
+                    if (expenseDate.isNotBlank()) {
+                        runCatching { dateFormat.parse(expenseDate) }.getOrNull()?.let {
+                            binding.tvSelectedDate.text = displayDateFormat.format(it)
+                        }
+                    } else {
+                        binding.tvSelectedDate.text = "No date"
                     }
                     binding.etAmount.setText(expense.amount.toString())
                     binding.etCategory.setText(expense.category)
@@ -149,7 +165,9 @@ class AddEditExpenseActivity : AppCompatActivity() {
     private fun saveExpense() {
         val amount = binding.etAmount.text.toString().toDoubleOrNull()
         val category = binding.etCategory.text.toString().trim()
-        val expenseDate = binding.etExpenseDate.text.toString()
+        val expenseDate = binding.etExpenseDate.text.toString().takeUnless {
+            binding.chkNoExpenseDate.isChecked || it.isBlank()
+        }
 
         if (amount == null || amount <= 0) {
             Toast.makeText(this, "Please enter a valid amount", Toast.LENGTH_SHORT).show()
@@ -158,11 +176,6 @@ class AddEditExpenseActivity : AppCompatActivity() {
 
         if (category.isEmpty()) {
             Toast.makeText(this, "Please enter a category", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        if (expenseDate.isEmpty()) {
-            Toast.makeText(this, "Please select a date", Toast.LENGTH_SHORT).show()
             return
         }
 

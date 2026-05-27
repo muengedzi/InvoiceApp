@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="@color/app_background"
+    android:background="?android:attr/colorBackground"
     android:padding="12dp">
 
     <!-- Search Bar -->
@@ -16,9 +16,9 @@
         android:layout_marginBottom="8dp"
         android:hint="@string/search_invoices_hint"
         app:startIconDrawable="@drawable/ic_search"
-        app:startIconTint="@color/text_secondary"
+        app:startIconTint="?attr/colorTextSecondary"
         app:endIconMode="clear_text"
-        app:endIconTint="@color/text_secondary"
+        app:endIconTint="?attr/colorTextSecondary"
         app:boxCornerRadiusTopStart="12dp"
         app:boxCornerRadiusTopEnd="12dp"
         app:boxCornerRadiusBottomStart="12dp"
@@ -29,7 +29,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:inputType="text"
-            android:textColor="@color/text_primary"
+            android:textColor="?attr/colorOnSurface"
             android:imeOptions="actionSearch" />
 
     </com.google.android.material.textfield.TextInputLayout>

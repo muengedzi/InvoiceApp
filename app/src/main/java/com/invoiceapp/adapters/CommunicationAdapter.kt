@@ -54,6 +54,9 @@ class CommunicationAdapter(
             }
 
             binding.tvSubject.text = communication.subject
+            val customer = communication.customerName?.takeIf { it.isNotBlank() } ?: "Customer"
+            val invoice = communication.invoiceNumber?.takeIf { it.isNotBlank() } ?: "Invoice"
+            binding.tvContext.text = "$customer - $invoice"
             binding.tvMessage.text = communication.messageBody
             binding.tvDate.text = sentDate
 

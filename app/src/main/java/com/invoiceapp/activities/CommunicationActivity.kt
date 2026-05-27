@@ -20,7 +20,7 @@ import com.invoiceapp.utils.SessionManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-class CommunicationActivity : AppCompatActivity() {
+class CommunicationActivity : BaseActivity() {
 
     private lateinit var binding: ActivityCommunicationBinding
     private lateinit var sessionManager: SessionManager
@@ -30,6 +30,8 @@ class CommunicationActivity : AppCompatActivity() {
     private var invoiceNumber: String = ""
     private var customerName: String = ""
     private var customerEmail: String = ""
+    private var communicationFilter: String? = null
+    private var communicationTitle: String = "Communications"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -41,6 +43,8 @@ class CommunicationActivity : AppCompatActivity() {
         invoiceNumber = intent.getStringExtra("invoice_number") ?: ""
         customerName = intent.getStringExtra("customer_name") ?: ""
         customerEmail = intent.getStringExtra("customer_email") ?: ""
+        communicationFilter = intent.getStringExtra("communication_filter")
+        communicationTitle = intent.getStringExtra("communication_title") ?: "Communications"
 
         setupToolbar()
         setupRecyclerView()
@@ -51,7 +55,11 @@ class CommunicationActivity : AppCompatActivity() {
     private fun setupToolbar() {
         setSupportActionBar(binding.toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.title = "Communication - $invoiceNumber"
+        supportActionBar?.title = if (communicationFilter != null) {
+            communicationTitle
+        } else {
+            "Communication - $invoiceNumber"
+        }
     }
 
     private fun setupRecyclerView() {
@@ -65,6 +73,11 @@ class CommunicationActivity : AppCompatActivity() {
     }
 
     private fun setupClickListeners() {
+        if (communicationFilter != null) {
+            binding.communicationActions.visibility = View.GONE
+            return
+        }
+
         binding.btnSendMessage.setOnClickListener {
             showSendMessageDialog()
         }
@@ -76,7 +89,11 @@ class CommunicationActivity : AppCompatActivity() {
     private fun loadCommunications() {
         lifecycleScope.launch {
             try {
-                val response = RetrofitClient.apiService.getInvoiceCommunications(invoiceId)
+                val response = if (communicationFilter != null) {
+                    RetrofitClient.apiService.getAllInvoiceCommunications(communicationFilter)
+                } else {
+                    RetrofitClient.apiService.getInvoiceCommunications(invoiceId)
+                }
                 if (response.isSuccessful && response.body() != null) {
                     communications.clear()
                     communications.addAll(response.body()!!)
@@ -84,6 +101,11 @@ class CommunicationActivity : AppCompatActivity() {
 
                     if (communications.isEmpty()) {
                         binding.tvEmptyView.visibility = View.VISIBLE
+                        binding.tvEmptyView.text = if (communicationFilter != null) {
+                            "No ${communicationTitle.lowercase()} found."
+                        } else {
+                            "No communications yet.\nSend a message to get started."
+                        }
                         binding.recyclerView.visibility = View.GONE
                     } else {
                         binding.tvEmptyView.visibility = View.GONE
@@ -155,7 +177,7 @@ class CommunicationActivity : AppCompatActivity() {
         etSubject.setText("Re: ${communication.subject}")
 
         AlertDialog.Builder(this)
-            .setTitle("Reply to ${customerName}")
+            .setTitle("Reply to ${communication.customerName ?: customerName}")
             .setView(dialogView)
             .setPositiveButton("Send") { _, _ ->
                 val subject = etSubject.text.toString().trim()

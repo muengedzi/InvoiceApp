@@ -9,7 +9,13 @@ data class DashboardStats(
     val monthly_profit: Double,
     val invoice_counts: Map<String, Int>,
     val recent_invoices: List<RecentInvoice>,
-    val recent_expenses: List<RecentExpense>
+    val recent_expenses: List<RecentExpense>,
+    // New fields for counts
+    val paid_count: Int = 0,
+    val paid_amount: Double = 0.0,
+    val overdue_count: Int = 0,
+    val overdue_amount: Double = 0.0,
+    val pending_count: Int = 0
 )
 
 data class RecentInvoice(
@@ -23,7 +29,7 @@ data class RecentInvoice(
 
 data class RecentExpense(
     val id: Int,
-    val expense_date: String,
+    val expense_date: String?,
     val category: String,
     val amount: Double,
     val description: String

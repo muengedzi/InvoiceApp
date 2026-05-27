@@ -23,7 +23,7 @@ import com.invoiceapp.utils.SessionManager
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
 
-class ManageItemsActivity : AppCompatActivity() {
+class ManageItemsActivity : BaseActivity() {
 
     private lateinit var binding: ActivityManageItemsBinding
     private lateinit var sessionManager: SessionManager

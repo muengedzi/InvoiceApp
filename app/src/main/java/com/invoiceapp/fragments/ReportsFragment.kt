@@ -17,6 +17,7 @@ import com.github.mikephil.charting.data.BarDataSet
 import com.github.mikephil.charting.data.BarEntry
 import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
 import com.github.mikephil.charting.formatter.ValueFormatter
+import com.google.android.material.color.MaterialColors
 import com.invoiceapp.R
 import com.invoiceapp.adapters.ReportDetailAdapter
 import com.invoiceapp.databinding.FragmentReportsBinding
@@ -52,12 +53,13 @@ class ReportsFragment : Fragment() {
         private const val REPORT_ITEM_SALES = 6
         private const val REPORT_CUSTOMER = 7
 
-        private const val PERIOD_DAILY = 0
-        private const val PERIOD_WEEKLY = 1
-        private const val PERIOD_MONTHLY = 2
-        private const val PERIOD_QUARTERLY = 3
-        private const val PERIOD_YEARLY = 4
-        private const val PERIOD_CUSTOM = 5
+        private const val PERIOD_LAST_30_DAYS = 0
+        private const val PERIOD_LAST_7_DAYS = 1
+        private const val PERIOD_THIS_MONTH = 2
+        private const val PERIOD_LAST_3_MONTHS = 3
+        private const val PERIOD_LAST_6_MONTHS = 4
+        private const val PERIOD_LAST_12_MONTHS = 5
+        private const val PERIOD_CUSTOM = 6
     }
 
     override fun onCreateView(
@@ -102,7 +104,15 @@ class ReportsFragment : Fragment() {
         binding.spinnerReportType.adapter = reportAdapter
 
         // Periods
-        val periods = arrayOf("Daily", "Weekly", "Monthly", "Quarterly", "Yearly", "Custom Range")
+        val periods = arrayOf(
+            "Last 30 Days",
+            "Last 7 Days",
+            "This Month",
+            "Last 3 Months",
+            "Last 6 Months",
+            "Last 12 Months",
+            "Custom Range"
+        )
         val periodAdapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, periods)
         periodAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.spinnerPeriod.adapter = periodAdapter
@@ -120,11 +130,12 @@ class ReportsFragment : Fragment() {
 
     private fun updatePeriodText(period: Int) {
         val periodText = when (period) {
-            PERIOD_DAILY -> "Today"
-            PERIOD_WEEKLY -> "This Week"
-            PERIOD_MONTHLY -> "This Month"
-            PERIOD_QUARTERLY -> "This Quarter"
-            PERIOD_YEARLY -> "This Year"
+            PERIOD_LAST_30_DAYS -> "Last 30 Days"
+            PERIOD_LAST_7_DAYS -> "Last 7 Days"
+            PERIOD_THIS_MONTH -> "This Month"
+            PERIOD_LAST_3_MONTHS -> "Last 3 Months"
+            PERIOD_LAST_6_MONTHS -> "Last 6 Months"
+            PERIOD_LAST_12_MONTHS -> "Last 12 Months"
             else -> ""
         }
         binding.tvPeriod.text = periodText
@@ -264,22 +275,22 @@ class ReportsFragment : Fragment() {
     private fun getStartDateForPeriod(period: Int): String {
         val calendar = Calendar.getInstance()
         when (period) {
-            PERIOD_DAILY -> calendar.add(Calendar.DAY_OF_MONTH, -1)
-            PERIOD_WEEKLY -> calendar.add(Calendar.WEEK_OF_YEAR, -1)
-            PERIOD_MONTHLY -> calendar.add(Calendar.MONTH, -1)
-            PERIOD_QUARTERLY -> calendar.add(Calendar.MONTH, -3)
-            PERIOD_YEARLY -> calendar.add(Calendar.YEAR, -1)
+            PERIOD_LAST_30_DAYS -> calendar.add(Calendar.DAY_OF_MONTH, -30)
+            PERIOD_LAST_7_DAYS -> calendar.add(Calendar.DAY_OF_MONTH, -7)
+            PERIOD_THIS_MONTH -> {
+                calendar.set(Calendar.DAY_OF_MONTH, 1)
+            }
+            PERIOD_LAST_3_MONTHS -> calendar.add(Calendar.MONTH, -3)
+            PERIOD_LAST_6_MONTHS -> calendar.add(Calendar.MONTH, -6)
+            PERIOD_LAST_12_MONTHS -> calendar.add(Calendar.YEAR, -1)
         }
         return dateFormat.format(calendar.time)
     }
 
     private fun getPeriodGroupBy(period: Int): String {
         return when (period) {
-            PERIOD_DAILY -> "day"
-            PERIOD_WEEKLY -> "week"
-            PERIOD_MONTHLY -> "month"
-            PERIOD_QUARTERLY -> "quarter"
-            PERIOD_YEARLY -> "year"
+            PERIOD_LAST_7_DAYS -> "day"
+            PERIOD_LAST_30_DAYS -> "day"
             else -> "month"
         }
     }
@@ -312,30 +323,49 @@ class ReportsFragment : Fragment() {
 
         val summary = data["summary"] as? Map<String, Any>
         val dataList = data["data"] as? List<Map<String, Any>> ?: emptyList()
+        val monthlyActivity = data["monthly_activity"] as? List<Map<String, Any>> ?: emptyList()
+        val revenueWindows = data["revenue_windows"] as? Map<String, Any>
 
-        // Update summary cards
         summary?.let {
             val totalRevenue = (it["total_revenue"] as? Number)?.toDouble() ?: 0.0
+            val totalTax = (it["total_tax"] as? Number)?.toDouble() ?: 0.0
+            val totalInvoices = (it["total_invoices"] as? Number)?.toInt() ?: 0
+            binding.tvReportRevenueLabel.text = "Made"
+            binding.tvReportExpensesLabel.text = "Tax Due"
+            binding.tvReportNetProfitLabel.text = "Invoices"
             binding.tvReportTotalRevenue.text = currencyFormat.format(totalRevenue)
+            binding.tvReportTotalExpenses.text = currencyFormat.format(totalTax)
+            binding.tvReportTotalExpenses.setTextColor(android.graphics.Color.parseColor("#FF9800"))
+            binding.tvReportNetProfit.text = totalInvoices.toString()
+            binding.tvReportNetProfit.setTextColor(android.graphics.Color.parseColor("#2196F3"))
         }
 
-        // Prepare chart data
+        revenueWindows?.let {
+            binding.tvRevenueWindows.visibility = View.VISIBLE
+            binding.tvRevenueWindows.text = listOf(
+                "Last 30 days: ${currencyFormat.format(((it["last_30_days"] as? Number)?.toDouble() ?: 0.0))}",
+                "Quarter: ${currencyFormat.format(((it["last_quarter"] as? Number)?.toDouble() ?: 0.0))}",
+                "Six months: ${currencyFormat.format(((it["last_six_months"] as? Number)?.toDouble() ?: 0.0))}",
+                "Year: ${currencyFormat.format(((it["last_year"] as? Number)?.toDouble() ?: 0.0))}"
+            ).joinToString("\n")
+        }
+
         val entries = mutableListOf<BarEntry>()
         val labels = mutableListOf<String>()
+        val chartList = monthlyActivity.takeIf { it.isNotEmpty() } ?: dataList
 
-        dataList.forEachIndexed { index, item ->
-            val amount = (item["total_amount"] as? Number)?.toFloat() ?: 0f
+        chartList.forEachIndexed { index, item ->
+            val amount = ((item["revenue"] ?: item["total_amount"]) as? Number)?.toFloat() ?: 0f
             entries.add(BarEntry(index.toFloat(), amount))
-            val label = item["period"] as? String ?: ""
-            labels.add(label.take(10))
+            val label = item["period"] as? String ?: formatMonthLabel(item)
+            labels.add(label.take(12))
         }
 
         if (entries.isNotEmpty()) {
-            updateChart(entries, labels, "Sales Revenue")
+            updateChart(entries, labels, "Money Made")
         }
 
-        // Update recycler view
-        reportDetailAdapter.submitList(dataList)
+        reportDetailAdapter.submitList(monthlyActivity.takeIf { it.isNotEmpty() } ?: dataList)
     }
 
     private fun displayExpenseReport(data: Map<String, Any>) {
@@ -425,27 +455,32 @@ class ReportsFragment : Fragment() {
 
         val summary = data["summary"] as? Map<String, Any>
         val taxRates = data["tax_rates"] as? List<Map<String, Any>> ?: emptyList()
+        val taxByMonth = data["tax_by_month"] as? List<Map<String, Any>> ?: emptyList()
 
         summary?.let {
             val totalTax = (it["total_tax_collected"] as? Number)?.toDouble() ?: 0.0
+            binding.tvReportRevenueLabel.text = "Tax Due"
+            binding.tvReportExpensesLabel.text = "Expenses"
+            binding.tvReportNetProfitLabel.text = "Net Profit"
             binding.tvReportTotalRevenue.text = currencyFormat.format(totalTax)
             binding.tvReportTotalRevenue.setTextColor(android.graphics.Color.parseColor("#FF9800"))
         }
 
         val entries = mutableListOf<BarEntry>()
         val labels = mutableListOf<String>()
+        val chartList = taxByMonth.takeIf { it.isNotEmpty() } ?: taxRates
 
-        taxRates.forEachIndexed { index, item ->
-            val taxAmount = (item["tax_collected"] as? Number)?.toFloat() ?: 0f
+        chartList.forEachIndexed { index, item ->
+            val taxAmount = ((item["tax_liability"] ?: item["tax_collected"]) as? Number)?.toFloat() ?: 0f
             entries.add(BarEntry(index.toFloat(), taxAmount))
-            labels.add("${item["tax_rate"]}%")
+            labels.add((item["period"] as? String) ?: "${item["tax_rate"]}%")
         }
 
         if (entries.isNotEmpty()) {
-            updateChart(entries, labels, "Tax Collected by Rate")
+            updateChart(entries, labels, "Tax Liability")
         }
 
-        reportDetailAdapter.submitList(taxRates)
+        reportDetailAdapter.submitList(taxByMonth.takeIf { it.isNotEmpty() } ?: taxRates)
     }
 
     private fun displayOutstandingReport(data: Map<String, Any>) {
@@ -466,21 +501,23 @@ class ReportsFragment : Fragment() {
         binding.tvReportTitle.text = "Invoice Status Report"
 
         val statusBreakdown = data["status_breakdown"] as? List<Map<String, Any>> ?: emptyList()
+        val monthlyStatus = data["monthly_status"] as? List<Map<String, Any>> ?: emptyList()
 
         val entries = mutableListOf<BarEntry>()
         val labels = mutableListOf<String>()
+        val chartList = monthlyStatus.takeIf { it.isNotEmpty() } ?: statusBreakdown
 
-        statusBreakdown.forEachIndexed { index, item ->
-            val count = (item["count"] as? Number)?.toFloat() ?: 0f
+        chartList.forEachIndexed { index, item ->
+            val count = ((item["invoices_created"] ?: item["count"]) as? Number)?.toFloat() ?: 0f
             entries.add(BarEntry(index.toFloat(), count))
-            labels.add(item["status"] as? String ?: "")
+            labels.add((item["period"] ?: item["status"]) as? String ?: "")
         }
 
         if (entries.isNotEmpty()) {
-            updateChart(entries, labels, "Invoices by Status")
+            updateCountChart(entries, labels, if (monthlyStatus.isNotEmpty()) "Invoices Created by Month" else "Invoices by Status")
         }
 
-        reportDetailAdapter.submitList(statusBreakdown)
+        reportDetailAdapter.submitList(monthlyStatus.takeIf { it.isNotEmpty() } ?: statusBreakdown)
     }
 
     private fun displayItemSalesReport(data: Map<String, Any>) {
@@ -529,7 +566,7 @@ class ReportsFragment : Fragment() {
 
     private fun updateChart(entries: List<BarEntry>, labels: List<String>, title: String) {
         val dataSet = BarDataSet(entries, title).apply {
-            color = requireContext().getColor(R.color.purple_500)
+            color = MaterialColors.getColor(binding.root, com.google.android.material.R.attr.colorSecondary)
             valueTextSize = 10f
             setDrawValues(true)
             valueFormatter = object : ValueFormatter() {
@@ -548,13 +585,50 @@ class ReportsFragment : Fragment() {
         binding.barChart.invalidate()
     }
 
+    private fun updateCountChart(entries: List<BarEntry>, labels: List<String>, title: String) {
+        val dataSet = BarDataSet(entries, title).apply {
+            color = MaterialColors.getColor(binding.root, com.google.android.material.R.attr.colorPrimary)
+            valueTextSize = 10f
+            setDrawValues(true)
+            valueFormatter = object : ValueFormatter() {
+                override fun getFormattedValue(value: Float): String {
+                    return value.toInt().toString()
+                }
+            }
+        }
+
+        val barData = BarData(dataSet)
+        barData.barWidth = 0.8f
+
+        binding.barChart.data = barData
+        binding.barChart.xAxis.valueFormatter = IndexAxisValueFormatter(labels)
+        binding.barChart.xAxis.labelCount = labels.size.coerceAtMost(6)
+        binding.barChart.invalidate()
+    }
+
+    private fun formatMonthLabel(item: Map<String, Any>): String {
+        val year = (item["year"] as? Number)?.toInt()
+        val month = (item["month"] as? Number)?.toInt()
+        if (year != null && month != null) {
+            val calendar = Calendar.getInstance()
+            calendar.set(year, month - 1, 1)
+            return monthYearFormat.format(calendar.time)
+        }
+        return item["period"] as? String ?: ""
+    }
+
     private fun resetReportContent() {
+        binding.tvReportRevenueLabel.text = "Revenue"
+        binding.tvReportExpensesLabel.text = "Expenses"
+        binding.tvReportNetProfitLabel.text = "Net Profit"
         binding.tvReportTotalRevenue.text = currencyFormat.format(0)
         binding.tvReportTotalRevenue.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
         binding.tvReportTotalExpenses.text = currencyFormat.format(0)
         binding.tvReportTotalExpenses.setTextColor(android.graphics.Color.parseColor("#F44336"))
         binding.tvReportNetProfit.text = currencyFormat.format(0)
         binding.tvReportNetProfit.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
+        binding.tvRevenueWindows.visibility = View.GONE
+        binding.tvRevenueWindows.text = ""
         reportDetailAdapter.submitList(emptyList())
         binding.barChart.clear()
         binding.barChart.invalidate()

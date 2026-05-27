@@ -21,9 +21,21 @@
         app:showAsAction="never" />
 
     <item
-        android:id="@+id/menu_settings"
-        android:title="Settings"
+        android:id="@+id/menu_company_settings"
+        android:title="Company Settings"
+        android:icon="@android:drawable/ic_menu_edit"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/menu_theme_settings"
+        android:title="Themes"
         android:icon="@android:drawable/ic_menu_preferences"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/menu_template_settings"
+        android:title="Invoice Templates"
+        android:icon="@android:drawable/ic_menu_gallery"
         app:showAsAction="never" />
 
     <item

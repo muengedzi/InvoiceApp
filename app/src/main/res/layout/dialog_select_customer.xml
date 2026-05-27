@@ -33,7 +33,7 @@
         android:gravity="center"
         android:padding="24dp"
         android:text="No matching customers"
-        android:textColor="@color/text_secondary"
+        android:textColor="?attr/colorTextSecondary"
         android:visibility="gone" />
 
     <ListView
@@ -41,6 +41,6 @@
         android:layout_width="match_parent"
         android:layout_height="360dp"
         android:layout_marginTop="8dp"
-        android:divider="@color/border_soft"
+        android:divider="?attr/colorBorderSoft"
         android:dividerHeight="1dp" />
 </LinearLayout>

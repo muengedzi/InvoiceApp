@@ -4,6 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginBottom="8dp"
+    app:cardBackgroundColor="?attr/colorSurface"
     app:cardCornerRadius="8dp"
     app:cardElevation="2dp">
 
@@ -40,7 +41,7 @@
                     android:layout_weight="1"
                     android:text="Customer Name"
                     android:textSize="12sp"
-                    android:textColor="@android:color/darker_gray" />
+                    android:textColor="?attr/colorTextSecondary" />
 
                 <ImageView
                     android:id="@+id/ivOverdueWarning"
@@ -60,7 +61,7 @@
                 android:layout_height="wrap_content"
                 android:text="Jan 01, 2024"
                 android:textSize="12sp"
-                android:textColor="@android:color/darker_gray" />
+                android:textColor="?attr/colorTextSecondary" />
 
         </LinearLayout>
 

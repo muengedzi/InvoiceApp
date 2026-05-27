@@ -13,7 +13,7 @@ import androidx.cardview.widget.CardView
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.invoiceapp.R
-import com.invoiceapp.activities.MainActivity
+import com.invoiceapp.activities.CommunicationActivity
 import com.invoiceapp.activities.PendingFollowUpsActivity
 import com.invoiceapp.models.RecentCustomerReply
 import com.invoiceapp.network.RetrofitClient
@@ -88,15 +88,15 @@ class CommunicationSummaryFragment : Fragment() {
 
                     // Set click listeners to navigate to appropriate screens
                     cardTotalSent.setOnClickListener {
-                        navigateToInvoices()
+                        navigateToCommunications("sent", "Sent Communications")
                     }
 
                     cardOpened.setOnClickListener {
-                        navigateToInvoices()
+                        navigateToCommunications("opened", "Opened Communications")
                     }
 
                     cardReplied.setOnClickListener {
-                        navigateToInvoices()
+                        navigateToCommunications("replied", "Replied Communications")
                     }
 
                     cardPendingFollowUps.setOnClickListener {
@@ -110,17 +110,6 @@ class CommunicationSummaryFragment : Fragment() {
             } finally {
                 progressBar.visibility = View.GONE
             }
-        }
-    }
-
-    private fun navigateToInvoices() {
-        // Check if activity is MainActivity
-        if (activity is MainActivity) {
-            (activity as MainActivity).navigateToInvoices()
-        } else {
-            // If not in MainActivity, navigate using intent
-            Toast.makeText(requireContext(), "Navigate to Invoices", Toast.LENGTH_SHORT).show()
-            // You can add alternative navigation here if needed
         }
     }
 
@@ -150,6 +139,13 @@ class CommunicationSummaryFragment : Fragment() {
             }
             recentRepliesContainer.addView(card)
         }
+    }
+
+    private fun navigateToCommunications(filter: String, title: String) {
+        val intent = Intent(requireContext(), CommunicationActivity::class.java)
+        intent.putExtra("communication_filter", filter)
+        intent.putExtra("communication_title", title)
+        startActivity(intent)
     }
 
     private fun syncInboxReplies() {

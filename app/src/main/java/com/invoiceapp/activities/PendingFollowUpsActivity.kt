@@ -18,7 +18,7 @@ import com.invoiceapp.utils.SessionManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-class PendingFollowUpsActivity : AppCompatActivity() {
+class PendingFollowUpsActivity : BaseActivity() {
 
     private lateinit var binding: ActivityPendingFollowUpsBinding
     private lateinit var sessionManager: SessionManager

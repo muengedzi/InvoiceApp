@@ -36,13 +36,22 @@ class SessionManager(context: Context) {
         )
     }
 
-    // Add these methods for session cookie management
+    // Session cookie management
     fun saveSessionCookie(cookie: String) {
         prefs.edit().putString("session_cookie", cookie).apply()
     }
 
     fun getSessionCookie(): String? {
         return prefs.getString("session_cookie", null)
+    }
+
+    // Template management
+    fun saveInvoiceTemplate(templateId: String) {
+        prefs.edit().putString("invoice_template", templateId).apply()
+    }
+
+    fun getInvoiceTemplate(): String {
+        return prefs.getString("invoice_template", "modern") ?: "modern"
     }
 
     fun clearSession() {

@@ -1,6 +1,7 @@
 package com.invoiceapp.network
 
 import com.invoiceapp.models.*
+import okhttp3.MultipartBody
 import retrofit2.Response
 import retrofit2.http.*
 
@@ -15,6 +16,12 @@ interface ApiService {
 
     @POST("/api/logout")
     suspend fun logout(): Response<Map<String, Any>>
+
+    @POST("/api/forgot-password")
+    suspend fun forgotPassword(@Body request: ForgotPasswordRequest): Response<SimpleMessageResponse>
+
+    @POST("/api/reset-password")
+    suspend fun resetPassword(@Body request: ResetPasswordRequest): Response<SimpleMessageResponse>
 
     // ==================== CUSTOMER ENDPOINTS ====================
     @GET("/api/customers")
@@ -205,6 +212,10 @@ interface ApiService {
     @POST("/api/verify-email")
     suspend fun verifyEmail(@Body token: Map<String, String>): Response<Map<String, Any>>
 
+    @Multipart
+    @POST("/api/company/logo")
+    suspend fun uploadCompanyLogo(@Part logo: MultipartBody.Part): Response<Map<String, Any>>
+
     // ==================== INVOICE ITEMS MASTER ENDPOINTS ====================
     @GET("/api/invoice-items")
     suspend fun getInvoiceItems(
@@ -243,6 +254,11 @@ interface ApiService {
     suspend fun deleteInvoiceItemCategory(@Path("id") id: Int): Response<Map<String, Any>>
 
     // ==================== INVOICE COMMUNICATION ENDPOINTS ====================
+    @GET("/api/invoices/communications")
+    suspend fun getAllInvoiceCommunications(
+        @Query("filter") filter: String? = null
+    ): Response<List<InvoiceCommunication>>
+
     @GET("/api/invoices/{id}/communications")
     suspend fun getInvoiceCommunications(@Path("id") id: Int): Response<List<InvoiceCommunication>>
 
@@ -269,4 +285,11 @@ interface ApiService {
 
     @GET("/api/customers/{id}/communication-thread")
     suspend fun getCustomerCommunicationThread(@Path("id") id: Int): Response<CustomerCommunicationThread>
+
+    // Invoice Templates API's
+    @GET("/api/user/template")
+    suspend fun getUserTemplate(): Response<UserTemplateResponse>
+
+    @PUT("/api/user/template")
+    suspend fun updateUserTemplate(@Body request: Map<String, String>): Response<Map<String, Any>>
 }

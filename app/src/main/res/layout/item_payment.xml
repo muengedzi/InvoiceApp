@@ -73,7 +73,7 @@
                 android:layout_weight="1"
                 android:text="CASH"
                 android:textSize="12sp"
-                android:textColor="@color/primary"
+                android:textColor="?attr/colorPrimary"
                 android:background="@drawable/bg_payment_method"
                 android:paddingHorizontal="10dp"
                 android:paddingVertical="4dp" />

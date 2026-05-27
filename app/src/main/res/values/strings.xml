@@ -48,4 +48,9 @@
     <string name="overdue_warning">Overdue Warning</string>
     <string name="search_invoices_hint">Search customer or invoice #</string>
     <string name="menu_create_quotation">Create Quotation</string>
+    <string name="amount_to_pay">Amount to Pay</string>
+    <string name="payment_method">Payment Method</string>
+    <string name="payment_type">Payment Type</string>
+    <string name="full_payment">Full Payment</string>
+    <string name="partial_payment">Partial Payment</string>
 </resources>

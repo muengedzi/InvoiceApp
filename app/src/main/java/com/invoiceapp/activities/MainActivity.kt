@@ -13,8 +13,9 @@ import com.invoiceapp.R
 import com.invoiceapp.databinding.ActivityMainBinding
 import com.invoiceapp.fragments.*
 import com.invoiceapp.utils.SessionManager
+import com.invoiceapp.utils.ThemeManager
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : BaseActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var sessionManager: SessionManager
     private var currentBottomItemId = R.id.navigation_dashboard
@@ -22,6 +23,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -180,8 +182,7 @@ class MainActivity : AppCompatActivity() {
                 true
             }
             R.id.menu_create_quotation -> {
-                val intent = Intent(this, CreateInvoiceActivity::class.java)
-                intent.putExtra("type", "quotation")
+                val intent = Intent(this, CreateQuotationActivity::class.java)
                 startActivity(intent)
                 true
             }
@@ -193,7 +194,15 @@ class MainActivity : AppCompatActivity() {
                 hideFAB()
                 true
             }
-            R.id.menu_settings -> {
+            R.id.menu_theme_settings -> {
+                startActivity(Intent(this, ThemeSettingsActivity::class.java))
+                true
+            }
+            R.id.menu_template_settings -> {
+                startActivity(Intent(this, TemplateSettingsActivity::class.java))
+                true
+            }
+            R.id.menu_company_settings -> {
                 startActivity(Intent(this, SettingsActivity::class.java))
                 true
             }
@@ -207,6 +216,7 @@ class MainActivity : AppCompatActivity() {
             }
             else -> super.onOptionsItemSelected(item)
         }
+
     }
 
     private fun showLogoutConfirmation() {
@@ -227,7 +237,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun navigateToInvoices() {
+        navigateToInvoices(null)
+    }
+
+    fun navigateToInvoices(statusFilter: String?) {
+        currentBottomItemId = R.id.navigation_invoices
+        showingMenuPage = false
+        supportActionBar?.setDisplayHomeAsUpEnabled(false)
         findViewById<BottomNavigationView>(R.id.bottomNavigation).selectedItemId = R.id.navigation_invoices
+        loadFragment(InvoicesFragment.newInstance(statusFilter))
+        supportActionBar?.title = "Invoices"
+        showFAB()
     }
 
     fun navigateToExpenses() {

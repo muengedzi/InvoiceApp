@@ -2,7 +2,7 @@ package com.invoiceapp.models
 
 data class Expense(
     val id: Int,
-    val expense_date: String,
+    val expense_date: String?,
     val category: String,
     val amount: Double,
     val description: String? = null,
@@ -15,7 +15,7 @@ data class Expense(
 )
 
 data class ExpenseRequest(
-    val expense_date: String,
+    val expense_date: String?,
     val category: String,
     val amount: Double,
     val description: String? = null,

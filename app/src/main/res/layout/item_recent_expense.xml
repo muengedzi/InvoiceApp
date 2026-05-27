@@ -4,6 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginBottom="8dp"
+    app:cardBackgroundColor="?attr/colorSurface"
     app:cardCornerRadius="8dp"
     app:cardElevation="2dp">
 
@@ -33,7 +34,7 @@
                 android:layout_height="wrap_content"
                 android:text="Description"
                 android:textSize="12sp"
-                android:textColor="@android:color/darker_gray" />
+                android:textColor="?attr/colorTextSecondary" />
 
             <TextView
                 android:id="@+id/tvDate"
@@ -41,7 +42,7 @@
                 android:layout_height="wrap_content"
                 android:text="Date"
                 android:textSize="12sp"
-                android:textColor="@android:color/darker_gray" />
+                android:textColor="?attr/colorTextSecondary" />
 
         </LinearLayout>
 

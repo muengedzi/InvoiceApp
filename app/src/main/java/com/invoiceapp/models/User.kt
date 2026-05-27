@@ -30,3 +30,18 @@ data class RegisterResponse(
     val success: Boolean,
     val message: String
 )
+
+data class ForgotPasswordRequest(
+    val email: String
+)
+
+data class ResetPasswordRequest(
+    val token: String,
+    val password: String
+)
+
+data class SimpleMessageResponse(
+    val success: Boolean,
+    val message: String? = null,
+    val error: String? = null
+)

@@ -57,9 +57,10 @@ class ReportDetailAdapter : RecyclerView.Adapter<ReportDetailAdapter.ViewHolder>
                 "total_spent",
                 "outstanding_balance",
                 "balance_due",
-                "tax_collected",
-                "taxable_amount",
                 "revenue",
+                "tax_collected",
+                "tax_liability",
+                "taxable_amount",
                 "total_expenses",
                 "net_profit"
             )
@@ -90,10 +91,23 @@ class ReportDetailAdapter : RecyclerView.Adapter<ReportDetailAdapter.ViewHolder>
                 item.containsKey("days_overdue") -> "days overdue"
                 item.containsKey("quantity_sold") -> "qty"
                 item.containsKey("invoice_count") -> "invoices"
+                item.containsKey("invoices_created") -> {
+                    val paid = number(item, "paid")
+                    val pending = number(item, "pending")
+                    val overdue = number(item, "overdue")
+                    return "created ${displayCount(count)}, paid ${displayCount(paid)}, pending ${displayCount(pending)}, overdue ${displayCount(overdue)}"
+                }
                 else -> "count"
             }
-            val displayCount = if (count % 1.0 == 0.0) count.toInt().toString() else count.toString()
-            return "$displayCount $label"
+            return "${displayCount(count)} $label"
+        }
+
+        private fun number(item: Map<String, Any>, key: String): Double {
+            return (item[key] as? Number)?.toDouble() ?: 0.0
+        }
+
+        private fun displayCount(count: Double): String {
+            return if (count % 1.0 == 0.0) count.toInt().toString() else count.toString()
         }
     }
 }

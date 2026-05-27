@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:fillViewport="true"
-    android:background="@color/app_background">
+    android:background="?android:attr/colorBackground">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -35,10 +35,10 @@
             android:text="Overview"
             android:textSize="24sp"
             android:textStyle="bold"
-            android:textColor="@color/black"
+            android:textColor="?attr/colorOnSurface"
             android:layout_marginBottom="16dp"/>
 
-        <!-- Stats Grid -->
+        <!-- Stats Grid - 2 columns -->
         <GridLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -47,147 +47,195 @@
             android:columnOrderPreserved="false"
             android:layout_marginBottom="24dp">
 
-            <!-- Total Revenue -->
+            <!-- Paid Invoices -->
             <androidx.cardview.widget.CardView
+                android:id="@+id/cardPaidInvoices"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="120dp"
                 android:layout_columnWeight="1"
                 android:layout_margin="4dp"
+                android:clickable="true"
+                android:focusable="true"
                 app:cardCornerRadius="12dp"
                 app:cardElevation="2dp">
                 <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
+                    android:layout_height="match_parent"
                     android:orientation="vertical"
-                    android:padding="16dp">
+                    android:padding="12dp"
+                    android:gravity="center_vertical">
                     <ImageView
-                        android:layout_width="24dp"
-                        android:layout_height="24dp"
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
                         android:src="@drawable/ic_dashboard"
                         app:tint="@color/success"
                         android:layout_marginBottom="8dp"/>
                     <TextView
+                        android:id="@+id/tvStatLabel"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Total Revenue"
-                        android:textSize="12sp"
-                        android:textColor="@color/text_secondary"/>
+                        android:text="Paid Invoices"
+                        android:textSize="11sp"
+                        android:textColor="?attr/colorTextSecondary"/>
                     <TextView
                         android:id="@+id/tvStatValue"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="$0.00"
-                        android:textSize="18sp"
+                        android:textSize="16sp"
                         android:textStyle="bold"
-                        android:textColor="@color/black"/>
+                        android:textColor="?attr/colorOnSurface"
+                        android:layout_marginTop="4dp"/>
+                    <TextView
+                        android:id="@+id/tvStatSubtext"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0 paid invoice(s)"
+                        android:textSize="10sp"
+                        android:textColor="?attr/colorTextSecondary"
+                        android:layout_marginTop="2dp"/>
                 </LinearLayout>
             </androidx.cardview.widget.CardView>
 
             <!-- Pending -->
             <androidx.cardview.widget.CardView
+                android:id="@+id/cardPendingInvoices"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="120dp"
                 android:layout_columnWeight="1"
                 android:layout_margin="4dp"
+                android:clickable="true"
+                android:focusable="true"
                 app:cardCornerRadius="12dp"
                 app:cardElevation="2dp">
                 <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
+                    android:layout_height="match_parent"
                     android:orientation="vertical"
-                    android:padding="16dp">
+                    android:padding="12dp"
+                    android:gravity="center_vertical">
                     <ImageView
-                        android:layout_width="24dp"
-                        android:layout_height="24dp"
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
                         android:src="@drawable/ic_invoice"
                         app:tint="@color/warning"
                         android:layout_marginBottom="8dp"/>
                     <TextView
+                        android:id="@+id/tvStatLabelPending"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Pending"
-                        android:textSize="12sp"
-                        android:textColor="@color/text_secondary"/>
+                        android:textSize="11sp"
+                        android:textColor="?attr/colorTextSecondary"/>
                     <TextView
                         android:id="@+id/tvStatValuePending"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="$0.00"
-                        android:textSize="18sp"
+                        android:textSize="16sp"
                         android:textStyle="bold"
-                        android:textColor="@color/black"/>
+                        android:textColor="?attr/colorOnSurface"
+                        android:layout_marginTop="4dp"/>
+                    <TextView
+                        android:id="@+id/tvStatSubtextPending"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0 pending invoice(s)"
+                        android:textSize="10sp"
+                        android:textColor="?attr/colorTextSecondary"
+                        android:layout_marginTop="2dp"/>
                 </LinearLayout>
             </androidx.cardview.widget.CardView>
 
-            <!-- Expenses -->
+            <!-- Overdue -->
             <androidx.cardview.widget.CardView
+                android:id="@+id/cardOverdueInvoices"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="120dp"
                 android:layout_columnWeight="1"
                 android:layout_margin="4dp"
+                android:clickable="true"
+                android:focusable="true"
                 app:cardCornerRadius="12dp"
                 app:cardElevation="2dp">
                 <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
+                    android:layout_height="match_parent"
                     android:orientation="vertical"
-                    android:padding="16dp">
+                    android:padding="12dp"
+                    android:gravity="center_vertical">
                     <ImageView
-                        android:layout_width="24dp"
-                        android:layout_height="24dp"
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
                         android:src="@drawable/ic_expenses"
                         app:tint="@color/error"
                         android:layout_marginBottom="8dp"/>
                     <TextView
+                        android:id="@+id/tvStatLabelExpenses"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Expenses"
-                        android:textSize="12sp"
-                        android:textColor="@color/text_secondary"/>
+                        android:text="Overdue"
+                        android:textSize="11sp"
+                        android:textColor="?attr/colorTextSecondary"/>
                     <TextView
                         android:id="@+id/tvStatValueExpenses"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="$0.00"
-                        android:textSize="18sp"
+                        android:textSize="16sp"
                         android:textStyle="bold"
-                        android:textColor="@color/black"/>
+                        android:textColor="?attr/colorOnSurface"
+                        android:layout_marginTop="4dp"/>
+                    <TextView
+                        android:id="@+id/tvStatSubtextExpenses"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0 overdue invoice(s)"
+                        android:textSize="10sp"
+                        android:textColor="?attr/colorTextSecondary"
+                        android:layout_marginTop="2dp"/>
                 </LinearLayout>
             </androidx.cardview.widget.CardView>
 
-            <!-- Monthly Profit -->
+            <!-- Expenses -->
             <androidx.cardview.widget.CardView
+                android:id="@+id/cardExpenses"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="120dp"
                 android:layout_columnWeight="1"
                 android:layout_margin="4dp"
+                android:clickable="true"
+                android:focusable="true"
                 app:cardCornerRadius="12dp"
                 app:cardElevation="2dp">
                 <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
+                    android:layout_height="match_parent"
                     android:orientation="vertical"
-                    android:padding="16dp">
+                    android:padding="12dp"
+                    android:gravity="center_vertical">
                     <ImageView
-                        android:layout_width="24dp"
-                        android:layout_height="24dp"
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
                         android:src="@drawable/ic_reports"
-                        app:tint="@color/primary"
+                        app:tint="?attr/colorPrimary"
                         android:layout_marginBottom="8dp"/>
                     <TextView
+                        android:id="@+id/tvStatLabelProfit"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Net Profit"
-                        android:textSize="12sp"
-                        android:textColor="@color/text_secondary"/>
+                        android:text="Expenses"
+                        android:textSize="11sp"
+                        android:textColor="?attr/colorTextSecondary"/>
                     <TextView
                         android:id="@+id/tvStatValueProfit"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="$0.00"
-                        android:textSize="18sp"
+                        android:textSize="16sp"
                         android:textStyle="bold"
-                        android:textColor="@color/black"/>
+                        android:textColor="?attr/colorOnSurface"
+                        android:layout_marginTop="4dp"/>
                 </LinearLayout>
             </androidx.cardview.widget.CardView>
 
@@ -211,7 +259,7 @@
                     android:text="Invoice Status Distribution"
                     android:textSize="16sp"
                     android:textStyle="bold"
-                    android:textColor="@color/black"
+                    android:textColor="?attr/colorOnSurface"
                     android:layout_marginBottom="16dp"/>
                 <com.github.mikephil.charting.charts.PieChart
                     android:id="@+id/pieChart"
@@ -234,13 +282,13 @@
                 android:text="Recent Invoices"
                 android:textSize="18sp"
                 android:textStyle="bold"
-                android:textColor="@color/black"/>
+                android:textColor="?attr/colorOnSurface"/>
             <TextView
                 android:id="@+id/tvViewAllInvoices"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="View All"
-                android:textColor="@color/primary"
+                android:textColor="?attr/colorPrimary"
                 android:textStyle="bold"
                 android:clickable="true"
                 android:focusable="true"/>
@@ -267,13 +315,13 @@
                 android:text="Recent Expenses"
                 android:textSize="18sp"
                 android:textStyle="bold"
-                android:textColor="@color/black"/>
+                android:textColor="?attr/colorOnSurface"/>
             <TextView
                 android:id="@+id/tvViewAllExpenses"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="View All"
-                android:textColor="@color/primary"
+                android:textColor="?attr/colorPrimary"
                 android:textStyle="bold"
                 android:clickable="true"
                 android:focusable="true"/>

@@ -4,16 +4,17 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="@color/app_background">
+    android:background="?android:attr/colorBackground">
 
     <androidx.appcompat.widget.Toolbar
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
-        android:background="@color/primary"
+        android:background="?attr/colorPrimary"
         app:titleTextColor="@android:color/white" />
 
     <LinearLayout
+        android:id="@+id/communicationActions"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
@@ -46,10 +47,10 @@
         android:layout_marginEnd="16dp"
         android:layout_marginBottom="8dp"
         android:visibility="gone"
-        app:cardBackgroundColor="@color/surface_soft"
+        app:cardBackgroundColor="?attr/colorSurfaceSoft"
         app:cardCornerRadius="12dp"
         app:cardElevation="0dp"
-        app:strokeColor="@color/border_soft"
+        app:strokeColor="?attr/colorBorderSoft"
         app:strokeWidth="1dp">
 
         <LinearLayout
@@ -63,7 +64,7 @@
                 android:id="@+id/progressProcessing"
                 android:layout_width="28dp"
                 android:layout_height="28dp"
-                android:indeterminateTint="@color/primary" />
+                android:indeterminateTint="?attr/colorPrimary" />
 
             <TextView
                 android:id="@+id/tvProcessingMessage"
@@ -72,7 +73,7 @@
                 android:layout_marginStart="12dp"
                 android:layout_weight="1"
                 android:text="Sending message..."
-                android:textColor="@color/text_primary"
+                android:textColor="?attr/colorOnSurface"
                 android:textSize="14sp"
                 android:textStyle="bold" />
 
@@ -84,7 +85,7 @@
         android:layout_height="wrap_content"
         android:padding="16dp"
         android:text="Communication History"
-        android:textColor="@color/text_primary"
+        android:textColor="?attr/colorOnSurface"
         android:textSize="16sp"
         android:textStyle="bold" />
 

@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="@color/app_background"
+    android:background="?android:attr/colorBackground"
     android:padding="12dp">
 
     <com.google.android.material.textfield.TextInputLayout
@@ -14,7 +14,7 @@
         android:layout_height="wrap_content"
         android:layout_marginBottom="12dp"
         android:hint="Search customers"
-        app:boxBackgroundColor="@color/surface_card"
+        app:boxBackgroundColor="?attr/colorSurface"
         app:boxCornerRadiusBottomEnd="14dp"
         app:boxCornerRadiusBottomStart="14dp"
         app:boxCornerRadiusTopEnd="14dp"

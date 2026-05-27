@@ -33,7 +33,7 @@ import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.*
 
-class CreateInvoiceActivity : AppCompatActivity() {
+class CreateInvoiceActivity : BaseActivity() {
 
     private lateinit var binding: ActivityCreateInvoiceBinding
     private lateinit var itemAdapter: InvoiceItemAdapter
@@ -41,8 +41,6 @@ class CreateInvoiceActivity : AppCompatActivity() {
     private val invoiceItems = mutableListOf<InvoiceItemRequest>()
     private var selectedCustomer: Customer? = null
     private var editingInvoiceId: Int? = null
-    private var isQuotation: Boolean = false
-    private var currentInvoiceStatus: String? = null
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
     private val displayDateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.US)
     private lateinit var sessionManager: SessionManager
@@ -70,7 +68,6 @@ class CreateInvoiceActivity : AppCompatActivity() {
         sessionManager = SessionManager(this)
         invoiceViewModel = ViewModelProvider(this)[InvoiceViewModel::class.java]
         editingInvoiceId = intent.getIntExtra("invoice_id", -1).takeIf { it != -1 }
-        isQuotation = intent.getStringExtra("type") == "quotation"
 
         setupToolbar()
         setupRecyclerView()
@@ -99,26 +96,18 @@ class CreateInvoiceActivity : AppCompatActivity() {
         setSupportActionBar(binding.toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
-        if (isQuotation) {
-            supportActionBar?.title = "Create Quotation"
-            binding.btnCreateInvoice.text = "Create Quotation"
-            binding.btnSaveAsDraft.visibility = View.GONE
-            binding.chkRecurring.visibility = View.GONE
-            // Hide due date section for quotations
-            binding.btnSelectDueDate.visibility = View.GONE
-            binding.tvSelectedDueDate.visibility = View.GONE
-            binding.etDueDate.visibility = View.GONE
-        } else if (editingInvoiceId != null) {
+        if (editingInvoiceId != null) {
             supportActionBar?.title = "Edit Invoice"
             binding.btnCreateInvoice.text = "Update Invoice"
-            binding.btnSelectDueDate.visibility = View.VISIBLE
-            binding.tvSelectedDueDate.visibility = View.VISIBLE
         } else {
             supportActionBar?.title = "Create Invoice"
             binding.btnCreateInvoice.text = "Create Invoice"
-            binding.btnSelectDueDate.visibility = View.VISIBLE
-            binding.tvSelectedDueDate.visibility = View.VISIBLE
         }
+
+        // Ensure due date section is visible
+        binding.btnSelectDueDate.visibility = View.VISIBLE
+        binding.tvSelectedDueDate.visibility = View.VISIBLE
+        binding.etDueDate.visibility = View.VISIBLE
     }
 
     private fun setupRecyclerView() {
@@ -309,12 +298,11 @@ class CreateInvoiceActivity : AppCompatActivity() {
                 is ApiResponse.Loading -> showLoading(true)
                 is ApiResponse.Success -> {
                     showLoading(false)
-                    val msg = if (isQuotation) "Quotation saved successfully!" else "Invoice saved successfully!"
-                    showSuccessAndFinish(msg)
+                    showSuccessAndFinish("Invoice saved successfully!")
                 }
                 is ApiResponse.Error -> {
                     showLoading(false)
-                    Toast.makeText(this, result.message, Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, "Error: ${result.message}", Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -338,9 +326,6 @@ class CreateInvoiceActivity : AppCompatActivity() {
                 is ApiResponse.Loading -> showLoading(true)
                 is ApiResponse.Success -> {
                     showLoading(false)
-                    currentInvoiceStatus = result.data.status.lowercase()
-                    isQuotation = currentInvoiceStatus == "quotation"
-                    setupToolbar()
                     populateInvoiceForEditing(result.data)
                 }
                 is ApiResponse.Error -> {
@@ -387,16 +372,12 @@ class CreateInvoiceActivity : AppCompatActivity() {
         binding.etInvoiceDate.setText(invoice.invoice_date)
         binding.tvSelectedDate.text = formatDateForDisplay(invoice.invoice_date)
 
-        // Only set due date for invoices (not quotations)
-        if (invoice.status.lowercase() != "quotation" && !invoice.due_date.isNullOrEmpty() && invoice.due_date != "null") {
+        // Set due date for invoice editing
+        if (!invoice.due_date.isNullOrEmpty() && invoice.due_date != "null") {
             binding.etDueDate.setText(invoice.due_date)
-            // Fix: Use invoice.due_date with safe call and provide default empty string
-            binding.tvSelectedDueDate.text = formatDateForDisplay(invoice.due_date ?: "")
+            binding.tvSelectedDueDate.text = formatDateForDisplay(invoice.due_date)
             binding.tvSelectedDueDate.visibility = View.VISIBLE
             binding.btnSelectDueDate.visibility = View.VISIBLE
-        } else {
-            binding.tvSelectedDueDate.visibility = View.GONE
-            binding.btnSelectDueDate.visibility = View.GONE
         }
 
         binding.etTaxRate.setText(invoice.taxRate.toString())
@@ -427,13 +408,6 @@ class CreateInvoiceActivity : AppCompatActivity() {
             binding.btnSaveAsDraft.text = "Save Draft"
             binding.cardDraftWarning.visibility = View.VISIBLE
             supportActionBar?.title = "Edit Draft Invoice"
-        } else if (invoice.status.lowercase() == "quotation") {
-            binding.btnSendInvoice.visibility = View.GONE
-            binding.btnCreateInvoice.visibility = View.VISIBLE
-            binding.btnCreateInvoice.text = "Update Quotation"
-            binding.btnSaveAsDraft.visibility = View.GONE
-            binding.cardDraftWarning.visibility = View.GONE
-            supportActionBar?.title = "Edit Quotation"
         } else {
             binding.btnSendInvoice.visibility = View.GONE
             binding.btnCreateInvoice.visibility = View.VISIBLE
@@ -735,13 +709,10 @@ class CreateInvoiceActivity : AppCompatActivity() {
         binding.tvSelectedDate.text = displayDateFormat.format(today)
         binding.etInvoiceDate.setText(dateFormat.format(today))
 
-        // Only set due date for invoices (not quotations)
-        if (!isQuotation) {
-            val dueCalendar = Calendar.getInstance()
-            dueCalendar.add(Calendar.DAY_OF_MONTH, 30)
-            binding.tvSelectedDueDate.text = displayDateFormat.format(dueCalendar.time)
-            binding.etDueDate.setText(dateFormat.format(dueCalendar.time))
-        }
+        val dueCalendar = Calendar.getInstance()
+        dueCalendar.add(Calendar.DAY_OF_MONTH, 30)
+        binding.tvSelectedDueDate.text = displayDateFormat.format(dueCalendar.time)
+        binding.etDueDate.setText(dateFormat.format(dueCalendar.time))
     }
 
     private fun formatDateForDisplay(dateString: String): String {
@@ -796,19 +767,15 @@ class CreateInvoiceActivity : AppCompatActivity() {
         }
 
         val invoiceDate = binding.etInvoiceDate.text.toString()
-
         if (invoiceDate.isEmpty()) {
             Toast.makeText(this, "Please select a date", Toast.LENGTH_SHORT).show()
             return false
         }
 
-        // Only validate due date for invoices (not quotations)
-        if (!isQuotation && editingInvoiceId == null) {
-            val dueDate = binding.etDueDate.text.toString()
-            if (dueDate.isEmpty()) {
-                Toast.makeText(this, "Please select a due date", Toast.LENGTH_SHORT).show()
-                return false
-            }
+        val dueDate = binding.etDueDate.text.toString()
+        if (dueDate.isEmpty()) {
+            Toast.makeText(this, "Please select a due date", Toast.LENGTH_SHORT).show()
+            return false
         }
 
         return true
@@ -816,40 +783,8 @@ class CreateInvoiceActivity : AppCompatActivity() {
 
     private fun createInvoice() {
         if (!validateInvoice()) return
-
-        // For quotations, use the dedicated quotation endpoint
-        if (isQuotation) {
-            createQuotation()
-        } else {
-            invoiceViewModel.createInvoice(getInvoiceRequest())
-        }
-    }
-
-    private fun createQuotation() {
-        if (!validateInvoice()) return
-
-        lifecycleScope.launch {
-            try {
-                showLoading(true)
-                val request = getInvoiceRequest()
-                // Explicitly set status to quotation - due_date is already null from getInvoiceRequest
-                val quotationRequest = request.copy(status = "quotation")
-
-                // Call the dedicated quotation endpoint
-                val response = RetrofitClient.apiService.createQuotation(quotationRequest)
-                if (response.isSuccessful) {
-                    showLoading(false)
-                    showSuccessAndFinish("Quotation created successfully!")
-                } else {
-                    showLoading(false)
-                    val errorMsg = response.errorBody()?.string() ?: "Failed to create quotation"
-                    Toast.makeText(this@CreateInvoiceActivity, errorMsg, Toast.LENGTH_LONG).show()
-                }
-            } catch (e: Exception) {
-                showLoading(false)
-                Toast.makeText(this@CreateInvoiceActivity, "Error: ${e.message}", Toast.LENGTH_LONG).show()
-            }
-        }
+        val request = getInvoiceRequest()
+        invoiceViewModel.createInvoice(request)
     }
 
     private fun createInvoiceAsDraft() {
@@ -903,7 +838,7 @@ class CreateInvoiceActivity : AppCompatActivity() {
         return InvoiceRequest(
             customer_id = selectedCustomer!!.id,
             invoice_date = binding.etInvoiceDate.text.toString(),
-            due_date = if (isQuotation) null else binding.etDueDate.text.toString(),
+            due_date = binding.etDueDate.text.toString(),
             po_number = binding.etPoNumber.text.toString().trim().ifEmpty { null },
             tax_rate = binding.etTaxRate.text.toString().toDoubleOrNull() ?: 0.0,
             discount_amount = binding.etDiscount.text.toString().toDoubleOrNull() ?: 0.0,
@@ -917,7 +852,7 @@ class CreateInvoiceActivity : AppCompatActivity() {
             recurring_day = recurringDay,
             recurring_active = binding.chkRecurring.isChecked,
             items = invoiceItems.toList(),
-            status = if (isQuotation) "quotation" else null,
+            status = "pending",
             tax_type = if (binding.rbTaxInclusive.isChecked) "inclusive" else "exclusive"
         )
     }

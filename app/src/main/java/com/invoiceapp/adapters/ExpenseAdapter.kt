@@ -38,7 +38,7 @@ class ExpenseAdapter(
         fun bind(expense: RecentExpense) {
             binding.tvCategory.text = expense.category
             binding.tvDescription.text = expense.description
-            binding.tvDate.text = expense.expense_date
+            binding.tvDate.text = expense.expense_date ?: "No date"
             binding.tvAmount.text = formatCurrency(expense.amount)
 
             binding.root.setOnClickListener {

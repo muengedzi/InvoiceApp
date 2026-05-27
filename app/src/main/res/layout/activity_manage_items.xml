@@ -9,7 +9,7 @@
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
-        android:background="@color/primary"
+        android:background="?attr/colorPrimary"
         app:titleTextColor="@android:color/white" />
 
     <LinearLayout
@@ -122,6 +122,6 @@
         android:layout_gravity="bottom|end"
         android:layout_margin="16dp"
         android:src="@android:drawable/ic_input_add"
-        app:backgroundTint="@color/primary" />
+        app:backgroundTint="?attr/colorPrimary" />
 
 </LinearLayout>

@@ -9,7 +9,7 @@ import com.invoiceapp.databinding.ActivityVerifyEmailBinding
 import com.invoiceapp.network.RetrofitClient
 import kotlinx.coroutines.launch
 
-class VerifyEmailActivity : AppCompatActivity() {
+class VerifyEmailActivity : BaseActivity() {
 
     private lateinit var binding: ActivityVerifyEmailBinding
     private var token: String? = null
@@ -19,10 +19,10 @@ class VerifyEmailActivity : AppCompatActivity() {
         binding = ActivityVerifyEmailBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Get token from intent or deep link
-        token = intent.getStringExtra("token") ?: intent.data?.getQueryParameter("token")
+        // Get token from intent or deep link - handle all possible sources
+        token = getTokenFromIntent()
 
-        if (token == null) {
+        if (token.isNullOrEmpty()) {
             Toast.makeText(this, "Invalid verification link", Toast.LENGTH_SHORT).show()
             finish()
             return
@@ -30,6 +30,25 @@ class VerifyEmailActivity : AppCompatActivity() {
 
         setupClickListeners()
         verifyEmail()
+    }
+
+    private fun getTokenFromIntent(): String? {
+        // Check if token was passed as an extra
+        intent.getStringExtra("token")?.let { return it }
+
+        // Check if token is in the deep link data
+        intent.data?.let { uri ->
+            // Handle invoiceapp://verify?token=xxx
+            uri.getQueryParameter("token")?.let { return it }
+
+            // Handle http://host/verify-email-page?token=xxx
+            val path = uri.path
+            if (path != null && path.contains("verify-email-page")) {
+                uri.getQueryParameter("token")?.let { return it }
+            }
+        }
+
+        return null
     }
 
     private fun setupClickListeners() {

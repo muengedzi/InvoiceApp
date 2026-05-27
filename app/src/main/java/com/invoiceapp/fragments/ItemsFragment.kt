@@ -1,6 +1,8 @@
 package com.invoiceapp.fragments
 
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.*
 import android.widget.*
 import androidx.appcompat.app.AlertDialog
@@ -24,12 +26,11 @@ class ItemsFragment : Fragment() {
     private var _binding: FragmentItemsBinding? = null
     private val binding get() = _binding!!
     private lateinit var adapter: InvoiceItemMasterAdapter
-    private var itemsList = mutableListOf<InvoiceItemMaster>()
+    private var allItems = mutableListOf<InvoiceItemMaster>()
+    private var filteredItems = mutableListOf<InvoiceItemMaster>()
     private var categoriesList = mutableListOf<InvoiceItemCategory>()
-    private var currentPage = 1
-    private var isLoading = false
-    private var hasMorePages = true
     private var selectedCategoryId: Int? = null
+    private var currentSearchQuery = ""
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -45,6 +46,7 @@ class ItemsFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         setupRecyclerView()
+        setupSearch()
         setupClickListeners()
         setupFAB()
         loadCategories()
@@ -60,43 +62,25 @@ class ItemsFragment : Fragment() {
     }
 
     private fun setupRecyclerView() {
-        adapter = InvoiceItemMasterAdapter(itemsList) { item ->
+        adapter = InvoiceItemMasterAdapter(filteredItems) { item ->
             showEditItemDialog(item)
         }
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
+    }
 
-        binding.recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
-            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
-                super.onScrolled(recyclerView, dx, dy)
-                val layoutManager = recyclerView.layoutManager as LinearLayoutManager
-                val visibleItemCount = layoutManager.childCount
-                val totalItemCount = layoutManager.itemCount
-                val firstVisibleItemPosition = layoutManager.findFirstVisibleItemPosition()
-
-                if (!isLoading && hasMorePages) {
-                    if (visibleItemCount + firstVisibleItemPosition >= totalItemCount - 5) {
-                        loadMoreItems()
-                    }
-                }
+    private fun setupSearch() {
+        binding.etSearch.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+            override fun afterTextChanged(s: Editable?) {
+                currentSearchQuery = s?.toString().orEmpty()
+                applyFilters()
             }
         })
     }
 
     private fun setupClickListeners() {
-        binding.btnSearch.setOnClickListener {
-            currentPage = 1
-            itemsList.clear()
-            hasMorePages = true
-            loadItems()
-        }
-        binding.etSearch.setOnEditorActionListener { _, _, _ ->
-            currentPage = 1
-            itemsList.clear()
-            hasMorePages = true
-            loadItems()
-            true
-        }
         binding.btnFilterCategory.setOnClickListener {
             showCategoryFilterDialog()
         }
@@ -130,7 +114,7 @@ class ItemsFragment : Fragment() {
             setOnCheckedChangeListener { _, isChecked ->
                 if (isChecked) {
                     selectedCategoryId = null
-                    refreshItems()
+                    applyFilters()
                 }
             }
         }
@@ -145,7 +129,7 @@ class ItemsFragment : Fragment() {
                 setOnCheckedChangeListener { _, isChecked ->
                     if (isChecked) {
                         selectedCategoryId = category.id
-                        refreshItems()
+                        applyFilters()
                     }
                 }
             }
@@ -153,58 +137,52 @@ class ItemsFragment : Fragment() {
         }
     }
 
-    private fun refreshItems() {
-        currentPage = 1
-        itemsList.clear()
-        hasMorePages = true
-        loadItems()
-    }
-
     private fun loadItems() {
-        if (isLoading) return
-        isLoading = true
         binding.progressBar.visibility = View.VISIBLE
 
         viewLifecycleOwner.lifecycleScope.launch {
             try {
-                val searchQuery = binding.etSearch.text.toString()
-                val response = RetrofitClient.apiService.getInvoiceItems(
-                    page = currentPage,
-                    perPage = 20,
-                    search = searchQuery.ifEmpty { null },
-                    categoryId = selectedCategoryId
-                )
-
+                val response = RetrofitClient.apiService.getInvoiceItems(page = 1, perPage = 1000)
                 if (response.isSuccessful && response.body() != null) {
-                    val result = response.body()!!
-                    if (currentPage == 1) {
-                        itemsList.clear()
-                    }
-                    itemsList.addAll(result.items)
-                    adapter.updateList(itemsList)
-                    hasMorePages = currentPage < result.totalPages
-                    currentPage++
-
-                    if (itemsList.isEmpty()) {
-                        binding.tvEmptyView.visibility = View.VISIBLE
-                        binding.recyclerView.visibility = View.GONE
-                    } else {
-                        binding.tvEmptyView.visibility = View.GONE
-                        binding.recyclerView.visibility = View.VISIBLE
-                    }
+                    allItems.clear()
+                    allItems.addAll(response.body()!!.items)
+                    applyFilters()
                 }
             } catch (e: Exception) {
                 Toast.makeText(requireContext(), "Error: ${e.message}", Toast.LENGTH_SHORT).show()
             } finally {
-                isLoading = false
                 binding.progressBar.visibility = View.GONE
             }
         }
     }
 
-    private fun loadMoreItems() {
-        if (hasMorePages && !isLoading) {
-            loadItems()
+    private fun applyFilters() {
+        // Filter by category
+        var filtered = if (selectedCategoryId == null) {
+            allItems.toList()
+        } else {
+            allItems.filter { it.categoryId == selectedCategoryId }
+        }
+
+        // Filter by search query
+        if (currentSearchQuery.isNotBlank()) {
+            val query = currentSearchQuery.lowercase()
+            filtered = filtered.filter { item ->
+                item.itemName.lowercase().contains(query) ||
+                        (item.description?.lowercase()?.contains(query) == true)
+            }
+        }
+
+        filteredItems.clear()
+        filteredItems.addAll(filtered)
+        adapter.updateList(filteredItems)
+
+        if (filteredItems.isEmpty()) {
+            binding.tvEmptyView.visibility = View.VISIBLE
+            binding.recyclerView.visibility = View.GONE
+        } else {
+            binding.tvEmptyView.visibility = View.GONE
+            binding.recyclerView.visibility = View.VISIBLE
         }
     }
 
@@ -291,7 +269,7 @@ class ItemsFragment : Fragment() {
             try {
                 val response = RetrofitClient.apiService.createInvoiceItem(request)
                 if (response.isSuccessful) {
-                    refreshItems()
+                    loadItems()
                     loadCategories()
                 }
             } catch (e: Exception) {
@@ -305,7 +283,7 @@ class ItemsFragment : Fragment() {
             try {
                 val response = RetrofitClient.apiService.updateInvoiceItem(id, request)
                 if (response.isSuccessful) {
-                    refreshItems()
+                    loadItems()
                 }
             } catch (e: Exception) {
                 Toast.makeText(requireContext(), "Error: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -323,7 +301,7 @@ class ItemsFragment : Fragment() {
                         val response = RetrofitClient.apiService.deleteInvoiceItem(item.id)
                         if (response.isSuccessful) {
                             Toast.makeText(requireContext(), "Item deleted", Toast.LENGTH_SHORT).show()
-                            refreshItems()
+                            loadItems()
                         } else {
                             Toast.makeText(requireContext(), "Failed to delete item", Toast.LENGTH_SHORT).show()
                         }
@@ -344,7 +322,7 @@ class ItemsFragment : Fragment() {
             .setTitle("Filter by Category")
             .setSingleChoiceItems(categoryNames.toTypedArray(), checkedItem) { dialog, which ->
                 selectedCategoryId = if (which == 0) null else categoriesList[which - 1].id
-                refreshItems()
+                applyFilters()
                 dialog.dismiss()
             }
             .setNegativeButton("Cancel", null)
@@ -354,7 +332,7 @@ class ItemsFragment : Fragment() {
     private fun clearCategoryFilter() {
         selectedCategoryId = null
         updateCategoryChips()
-        refreshItems()
+        applyFilters()
     }
 
     override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
@@ -427,7 +405,7 @@ class ItemsFragment : Fragment() {
             try {
                 RetrofitClient.apiService.updateInvoiceItemCategory(id, mapOf("category_name" to name))
                 loadCategories()
-                refreshItems()
+                loadItems()
             } catch (e: Exception) {}
         }
     }
@@ -442,7 +420,7 @@ class ItemsFragment : Fragment() {
                         RetrofitClient.apiService.deleteInvoiceItemCategory(category.id)
                         if (selectedCategoryId == category.id) selectedCategoryId = null
                         loadCategories()
-                        refreshItems()
+                        loadItems()
                     } catch (e: Exception) {}
                 }
             }

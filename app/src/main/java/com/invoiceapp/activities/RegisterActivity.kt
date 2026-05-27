@@ -9,7 +9,7 @@ import com.invoiceapp.databinding.ActivityRegisterBinding
 import com.invoiceapp.network.ApiResponse
 import com.invoiceapp.viewmodels.AuthViewModel
 
-class RegisterActivity : AppCompatActivity() {
+class RegisterActivity : BaseActivity() {
     private lateinit var binding: ActivityRegisterBinding
     private lateinit var authViewModel: AuthViewModel
 

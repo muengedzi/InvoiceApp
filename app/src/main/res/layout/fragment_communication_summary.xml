@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/app_background"
+    android:background="?android:attr/colorBackground"
     android:fillViewport="true">
 
     <LinearLayout
@@ -18,7 +18,7 @@
             android:layout_height="wrap_content"
             android:layout_marginBottom="4dp"
             android:text="Communications"
-            android:textColor="@color/text_primary"
+            android:textColor="?attr/colorOnSurface"
             android:textSize="24sp"
             android:textStyle="bold" />
 
@@ -27,7 +27,7 @@
             android:layout_height="wrap_content"
             android:layout_marginBottom="16dp"
             android:text="Message delivery, responses, and pending follow-ups"
-            android:textColor="@color/text_secondary"
+            android:textColor="?attr/colorTextSecondary"
             android:textSize="14sp" />
 
         <com.google.android.material.button.MaterialButton
@@ -45,10 +45,10 @@
             android:layout_height="wrap_content"
             android:layout_marginBottom="12dp"
             android:visibility="gone"
-            app:cardBackgroundColor="@color/surface_soft"
+            app:cardBackgroundColor="?attr/colorSurfaceSoft"
             app:cardCornerRadius="12dp"
             app:cardElevation="0dp"
-            app:strokeColor="@color/border_soft"
+            app:strokeColor="?attr/colorBorderSoft"
             app:strokeWidth="1dp">
 
             <LinearLayout
@@ -61,7 +61,7 @@
                 <ProgressBar
                     android:layout_width="28dp"
                     android:layout_height="28dp"
-                    android:indeterminateTint="@color/primary" />
+                    android:indeterminateTint="?attr/colorPrimary" />
 
                 <TextView
                     android:id="@+id/tvSyncProcessing"
@@ -70,7 +70,7 @@
                     android:layout_marginStart="12dp"
                     android:layout_weight="1"
                     android:text="Checking inbox for replies..."
-                    android:textColor="@color/text_primary"
+                    android:textColor="?attr/colorOnSurface"
                     android:textSize="14sp"
                     android:textStyle="bold" />
 
@@ -99,10 +99,10 @@
                 android:layout_height="wrap_content"
                 android:layout_columnWeight="1"
                 android:layout_margin="4dp"
-                app:cardBackgroundColor="@color/surface_card"
+                app:cardBackgroundColor="?attr/colorSurface"
                 app:cardCornerRadius="12dp"
                 app:cardElevation="1dp"
-                app:strokeColor="@color/border_soft"
+                app:strokeColor="?attr/colorBorderSoft"
                 app:strokeWidth="1dp">
 
                 <LinearLayout
@@ -117,7 +117,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="0"
-                        android:textColor="@color/primary"
+                        android:textColor="?attr/colorPrimary"
                         android:textSize="26sp"
                         android:textStyle="bold" />
 
@@ -125,7 +125,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Total sent"
-                        android:textColor="@color/text_secondary"
+                        android:textColor="?attr/colorTextSecondary"
                         android:textSize="13sp" />
 
                 </LinearLayout>
@@ -137,10 +137,10 @@
                 android:layout_height="wrap_content"
                 android:layout_columnWeight="1"
                 android:layout_margin="4dp"
-                app:cardBackgroundColor="@color/surface_card"
+                app:cardBackgroundColor="?attr/colorSurface"
                 app:cardCornerRadius="12dp"
                 app:cardElevation="1dp"
-                app:strokeColor="@color/border_soft"
+                app:strokeColor="?attr/colorBorderSoft"
                 app:strokeWidth="1dp">
 
                 <LinearLayout
@@ -163,7 +163,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Opened"
-                        android:textColor="@color/text_secondary"
+                        android:textColor="?attr/colorTextSecondary"
                         android:textSize="13sp" />
 
                 </LinearLayout>
@@ -175,10 +175,10 @@
                 android:layout_height="wrap_content"
                 android:layout_columnWeight="1"
                 android:layout_margin="4dp"
-                app:cardBackgroundColor="@color/surface_card"
+                app:cardBackgroundColor="?attr/colorSurface"
                 app:cardCornerRadius="12dp"
                 app:cardElevation="1dp"
-                app:strokeColor="@color/border_soft"
+                app:strokeColor="?attr/colorBorderSoft"
                 app:strokeWidth="1dp">
 
                 <LinearLayout
@@ -193,7 +193,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="0"
-                        android:textColor="@color/accent"
+                        android:textColor="?attr/colorSecondary"
                         android:textSize="26sp"
                         android:textStyle="bold" />
 
@@ -201,7 +201,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Replied"
-                        android:textColor="@color/text_secondary"
+                        android:textColor="?attr/colorTextSecondary"
                         android:textSize="13sp" />
 
                 </LinearLayout>
@@ -213,10 +213,10 @@
                 android:layout_height="wrap_content"
                 android:layout_columnWeight="1"
                 android:layout_margin="4dp"
-                app:cardBackgroundColor="@color/surface_card"
+                app:cardBackgroundColor="?attr/colorSurface"
                 app:cardCornerRadius="12dp"
                 app:cardElevation="1dp"
-                app:strokeColor="@color/border_soft"
+                app:strokeColor="?attr/colorBorderSoft"
                 app:strokeWidth="1dp">
 
                 <LinearLayout
@@ -239,7 +239,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Pending follow-ups"
-                        android:textColor="@color/text_secondary"
+                        android:textColor="?attr/colorTextSecondary"
                         android:textSize="13sp" />
 
                 </LinearLayout>
@@ -252,7 +252,7 @@
             android:layout_height="wrap_content"
             android:layout_marginBottom="8dp"
             android:text="Recent Customer Replies"
-            android:textColor="@color/text_primary"
+            android:textColor="?attr/colorOnSurface"
             android:textSize="18sp"
             android:textStyle="bold" />
 
@@ -266,11 +266,11 @@
             android:id="@+id/tvNoRecentReplies"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="@color/surface_soft"
+            android:background="?attr/colorSurfaceSoft"
             android:gravity="center"
             android:padding="20dp"
             android:text="No customer replies yet."
-            android:textColor="@color/text_secondary"
+            android:textColor="?attr/colorTextSecondary"
             android:visibility="gone" />
 
     </LinearLayout>

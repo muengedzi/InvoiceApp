@@ -48,12 +48,13 @@ class ExpenseListAdapter(
             }
         }
 
-        private fun formatDate(dateString: String): String {
+        private fun formatDate(dateString: String?): String {
+            if (dateString.isNullOrBlank()) return "No date"
             return try {
                 val inputFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
                 val outputFormat = SimpleDateFormat("MMM dd, yyyy", Locale.US)
                 val date = inputFormat.parse(dateString)
-                outputFormat.format(date)
+                date?.let { outputFormat.format(it) } ?: "No date"
             } catch (e: Exception) {
                 dateString
             }
