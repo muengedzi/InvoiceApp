@@ -27,6 +27,7 @@ import com.invoiceapp.utils.SessionManager
 import androidx.lifecycle.ViewModelProvider
 import com.invoiceapp.network.ApiResponse
 import com.invoiceapp.viewmodels.InvoiceViewModel
+import com.invoiceapp.viewmodels.SettingsViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
@@ -38,6 +39,7 @@ class CreateInvoiceActivity : BaseActivity() {
     private lateinit var binding: ActivityCreateInvoiceBinding
     private lateinit var itemAdapter: InvoiceItemAdapter
     private lateinit var invoiceViewModel: InvoiceViewModel
+    private lateinit var settingsViewModel: SettingsViewModel
     private val invoiceItems = mutableListOf<InvoiceItemRequest>()
     private var selectedCustomer: Customer? = null
     private var editingInvoiceId: Int? = null
@@ -47,6 +49,7 @@ class CreateInvoiceActivity : BaseActivity() {
     private var customersList = listOf<Customer>()
     private var shouldRefreshCustomers = false
     private var loadingAnimator: ObjectAnimator? = null
+    private var companySettings: CompanySettings? = null
 
     // Recurring frequency options
     private lateinit var frequencyAdapter: ArrayAdapter<String>
@@ -67,6 +70,7 @@ class CreateInvoiceActivity : BaseActivity() {
 
         sessionManager = SessionManager(this)
         invoiceViewModel = ViewModelProvider(this)[InvoiceViewModel::class.java]
+        settingsViewModel = ViewModelProvider(this)[SettingsViewModel::class.java]
         editingInvoiceId = intent.getIntExtra("invoice_id", -1).takeIf { it != -1 }
 
         setupToolbar()
@@ -81,6 +85,7 @@ class CreateInvoiceActivity : BaseActivity() {
             invoiceViewModel.getInvoiceDetail(editingInvoiceId!!)
         } else {
             setDefaultDates()
+            settingsViewModel.loadSettings() // To pre-fill defaults
         }
     }
 
@@ -103,11 +108,6 @@ class CreateInvoiceActivity : BaseActivity() {
             supportActionBar?.title = "Create Invoice"
             binding.btnCreateInvoice.text = "Create Invoice"
         }
-
-        // Ensure due date section is visible
-        binding.btnSelectDueDate.visibility = View.VISIBLE
-        binding.tvSelectedDueDate.visibility = View.VISIBLE
-        binding.etDueDate.visibility = View.VISIBLE
     }
 
     private fun setupRecyclerView() {
@@ -335,6 +335,20 @@ class CreateInvoiceActivity : BaseActivity() {
                 }
             }
         }
+
+        settingsViewModel.settings.observe(this) { result ->
+            if (result is ApiResponse.Success && editingInvoiceId == null) {
+                companySettings = result.data
+                applyDefaultSettings(result.data)
+            }
+        }
+    }
+
+    private fun applyDefaultSettings(settings: CompanySettings) {
+        binding.etTaxRate.setText(settings.tax_rate_default.toString())
+        binding.etNotes.setText(settings.invoice_notes_default ?: "")
+        binding.etTermsConditions.setText(settings.terms_conditions_default ?: "")
+        binding.etFooterText.setText(settings.footer_text_default ?: "")
     }
 
     private fun loadCustomers() {
@@ -376,8 +390,6 @@ class CreateInvoiceActivity : BaseActivity() {
         if (!invoice.due_date.isNullOrEmpty() && invoice.due_date != "null") {
             binding.etDueDate.setText(invoice.due_date)
             binding.tvSelectedDueDate.text = formatDateForDisplay(invoice.due_date)
-            binding.tvSelectedDueDate.visibility = View.VISIBLE
-            binding.btnSelectDueDate.visibility = View.VISIBLE
         }
 
         binding.etTaxRate.setText(invoice.taxRate.toString())
@@ -389,6 +401,8 @@ class CreateInvoiceActivity : BaseActivity() {
         binding.etDiscount.setText(invoice.discount_amount.toString())
         binding.etShipping.setText(invoice.shipping_fee.toString())
         binding.etNotes.setText(invoice.notes ?: "")
+        binding.etTermsConditions.setText(invoice.terms_conditions ?: "")
+        binding.etFooterText.setText(invoice.footer_text ?: "")
 
         binding.chkRecurring.isChecked = invoice.is_recurring
         binding.layoutRecurringOptions.visibility = if (invoice.is_recurring) View.VISIBLE else View.GONE
@@ -845,14 +859,14 @@ class CreateInvoiceActivity : BaseActivity() {
             discount_type = "fixed",
             shipping_fee = binding.etShipping.text.toString().toDoubleOrNull() ?: 0.0,
             notes = binding.etNotes.text.toString().trim().ifEmpty { null },
-            terms_conditions = null,
-            footer_text = null,
+            terms_conditions = binding.etTermsConditions.text.toString().trim().ifEmpty { null },
+            footer_text = binding.etFooterText.text.toString().trim().ifEmpty { null },
             is_recurring = binding.chkRecurring.isChecked,
             recurring_frequency = recurringFrequency,
             recurring_day = recurringDay,
             recurring_active = binding.chkRecurring.isChecked,
             items = invoiceItems.toList(),
-            status = "pending",
+            status = null,
             tax_type = if (binding.rbTaxInclusive.isChecked) "inclusive" else "exclusive"
         )
     }

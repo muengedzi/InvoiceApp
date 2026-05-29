@@ -1,5 +1,7 @@
 package com.invoiceapp.activities
 
+import android.content.ActivityNotFoundException
+import android.content.ClipData
 import android.content.Intent
 import android.os.Bundle
 import android.os.Environment
@@ -430,19 +432,18 @@ class InvoiceDetailActivity : BaseActivity() {
 
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, "application/pdf")
+                clipData = ClipData.newUri(contentResolver, pdfFile.name, uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY)
             }
 
-            if (intent.resolveActivity(packageManager) != null) {
-                startActivity(intent)
-            } else {
-                Toast.makeText(
-                    this,
-                    "No PDF viewer app found. File saved at: ${pdfFile.absolutePath}",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
+            startActivity(Intent.createChooser(intent, "Open invoice PDF"))
+        } catch (e: ActivityNotFoundException) {
+            Toast.makeText(
+                this,
+                "No PDF viewer app found. File saved at: ${pdfFile.absolutePath}",
+                Toast.LENGTH_LONG
+            ).show()
         } catch (e: Exception) {
             e.printStackTrace()
             Toast.makeText(this, "Error opening PDF: ${e.message}", Toast.LENGTH_LONG).show()

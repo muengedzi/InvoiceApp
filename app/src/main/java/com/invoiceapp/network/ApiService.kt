@@ -216,6 +216,9 @@ interface ApiService {
     @POST("/api/company/logo")
     suspend fun uploadCompanyLogo(@Part logo: MultipartBody.Part): Response<Map<String, Any>>
 
+    @DELETE("/api/company/logo")
+    suspend fun removeCompanyLogo(): Response<Map<String, Any>>
+
     // ==================== INVOICE ITEMS MASTER ENDPOINTS ====================
     @GET("/api/invoice-items")
     suspend fun getInvoiceItems(

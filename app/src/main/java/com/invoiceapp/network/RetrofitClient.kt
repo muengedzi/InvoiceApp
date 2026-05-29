@@ -10,7 +10,8 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
 object RetrofitClient {
-    private const val BASE_URL = "http://10.0.0.150:5000/"
+    // Pull BASE_URL from Constants file - only need to change in one place!
+    private val BASE_URL = Constants.BASE_URL
 
     // Manual cookie storage
     private var sessionCookie: String? = null

@@ -28,6 +28,9 @@ data class CompanySettings(
     @SerializedName("company_vat_number")
     val company_vat_number: String? = null,
 
+    @SerializedName("bank_account_details")
+    val bank_account_details: String? = null,
+
     @SerializedName("tax_rate_default")
     val tax_rate_default: Double = 0.0,
 

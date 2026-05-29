@@ -45,8 +45,11 @@ load_dotenv(BASE_DIR / '.env')
 # ============================================
 # APP CONFIGURATION
 # ============================================
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static', static_url_path='/static')
 app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-change-this')
+
+app.config['STATIC_FOLDER'] = 'static'
+app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads')
 
 task_manager = None
 
@@ -68,7 +71,9 @@ CORS(app,
          "http://127.0.0.1:5000",
          "http://10.0.0.111:5000",
          "http://10.0.0.150:5000",
-         "http://10.0.0.150:8080"
+         "http://10.0.0.150:8080",
+         "http://192.168.8.150:5000",
+         "http://192.168.8.150:8080" 
      ],
      allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept", "Cookie", "X-CSRFToken"],
      expose_headers=["Set-Cookie", "Cookie", "Content-Disposition"],
@@ -627,6 +632,21 @@ def ensure_company_settings_columns(cursor):
     cursor.execute("""
         IF COL_LENGTH('dbo.company_settings', 'company_vat_number') IS NULL
             ALTER TABLE dbo.company_settings ADD company_vat_number NVARCHAR(100) NULL
+
+        IF COL_LENGTH('dbo.company_settings', 'invoice_notes_default') IS NULL
+            ALTER TABLE dbo.company_settings ADD invoice_notes_default NVARCHAR(MAX) NULL
+
+        IF COL_LENGTH('dbo.company_settings', 'terms_conditions_default') IS NULL
+            ALTER TABLE dbo.company_settings ADD terms_conditions_default NVARCHAR(MAX) NULL
+
+        IF COL_LENGTH('dbo.company_settings', 'footer_text_default') IS NULL
+            ALTER TABLE dbo.company_settings ADD footer_text_default NVARCHAR(MAX) NULL
+
+        IF COL_LENGTH('dbo.company_settings', 'payment_terms_default') IS NULL
+            ALTER TABLE dbo.company_settings ADD payment_terms_default NVARCHAR(MAX) NULL
+
+        IF COL_LENGTH('dbo.company_settings', 'bank_account_details') IS NULL
+            ALTER TABLE dbo.company_settings ADD bank_account_details NVARCHAR(MAX) NULL
     """)
 
 def ensure_email_sync_table(cursor):
@@ -1522,6 +1542,7 @@ def get_invoice_email_payload(invoice_id, user_id=None):
     conn = get_db_connection()
     cursor = conn.cursor()
     ensure_invoice_recurring_columns(cursor)
+    ensure_company_settings_columns(cursor)
     conn.commit()
     owner_id = user_id if user_id is not None else current_user.id
 
@@ -1539,7 +1560,7 @@ def get_invoice_email_payload(invoice_id, user_id=None):
             cs.company_name, cs.company_logo_url, cs.company_address, cs.company_phone,
             cs.company_email, cs.company_website, cs.currency_symbol, cs.currency_code,
             cs.tax_rate_default, cs.invoice_notes_default, cs.terms_conditions_default,
-            cs.footer_text_default
+            cs.footer_text_default, cs.company_vat_number, cs.bank_account_details
         FROM invoices i
         JOIN customers c ON i.customer_id = c.id
         LEFT JOIN company_settings cs ON cs.user_id = i.user_id
@@ -2564,7 +2585,9 @@ def generate_invoice_pdf(invoice_id):
                 cs.company_name, cs.company_logo_url, cs.company_address, cs.company_phone,
                 cs.company_email, cs.company_website, cs.currency_symbol, cs.currency_code,
                 cs.tax_rate_default, cs.invoice_notes_default, cs.terms_conditions_default, 
-                cs.footer_text_default
+                cs.footer_text_default,
+                cs.company_vat_number,
+                cs.bank_account_details
             FROM invoices i
             JOIN customers c ON i.customer_id = c.id
             LEFT JOIN company_settings cs ON cs.user_id = i.user_id
@@ -2612,6 +2635,19 @@ def generate_invoice_pdf(invoice_id):
         
         conn.close()
         conn = None
+        
+        # Convert logo URL to absolute filesystem path for pdfkit
+        if invoice.get('company_logo_url'):
+            logo_url = invoice['company_logo_url']
+            if logo_url.startswith('/'):
+                logo_url = logo_url[1:]
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            logo_abs_path = os.path.join(base_dir, logo_url)
+            logo_abs_path = os.path.normpath(logo_abs_path)
+            if os.path.exists(logo_abs_path):
+                invoice['company_logo_url'] = f"file:///{logo_abs_path.replace(os.sep, '/')}"
+            else:
+                invoice['company_logo_url'] = None
         
         # Format dates for display
         invoice_date_formatted = format_date(invoice.get('invoice_date', ''))
@@ -2716,6 +2752,8 @@ def format_date(date_str):
 # COMPANY SETTINGS ROUTES
 # ============================================
 
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
 @app.route('/api/company-settings', methods=['GET'])
 @login_required
 def get_company_settings():
@@ -2773,7 +2811,7 @@ def update_company_settings():
     
     updatable_fields = [
         'company_name', 'company_logo_url', 'company_address', 'company_phone',
-        'company_email', 'company_website', 'company_vat_number', 'tax_rate_default', 'currency_symbol',
+        'company_email', 'company_website', 'company_vat_number', 'bank_account_details', 'tax_rate_default', 'currency_symbol',
         'currency_code', 'invoice_prefix', 'estimate_prefix', 'invoice_notes_default',
         'terms_conditions_default', 'footer_text_default', 'payment_terms_default'
     ]
@@ -2815,7 +2853,7 @@ def update_company_settings():
 @app.route('/api/company/logo', methods=['POST'])
 @login_required
 def upload_company_logo():
-    """Upload company logo"""
+    """Upload company logo - supports multiple image formats"""
     try:
         if 'logo' not in request.files:
             return jsonify({"error": "No file provided"}), 400
@@ -2824,8 +2862,14 @@ def upload_company_logo():
         if file.filename == '':
             return jsonify({"error": "No file selected"}), 400
         
-        # Generate unique filename
+        # Validate file extension (allow common image formats)
+        allowed_extensions = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'}
         ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else 'png'
+        
+        if ext not in allowed_extensions:
+            return jsonify({"error": f"Invalid file type. Allowed: {', '.join(allowed_extensions)}"}), 400
+        
+        # Generate unique filename
         filename = f"logo_{current_user.id}_{int(time.time())}.{ext}"
         
         # Save to static/uploads folder
@@ -2834,7 +2878,7 @@ def upload_company_logo():
         filepath = os.path.join(upload_dir, filename)
         file.save(filepath)
         
-        # Update database
+        # Update database with the full URL path
         logo_url = f"/static/uploads/{filename}"
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -2861,6 +2905,51 @@ def upload_company_logo():
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/company/logo', methods=['DELETE'])
+@login_required
+def remove_company_logo():
+    """Remove company logo"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        ensure_company_settings_columns(cursor)
+        conn.commit()
+        
+        # Get current logo path to delete file
+        cursor.execute("SELECT company_logo_url FROM company_settings WHERE user_id = ?", (current_user.id,))
+        result = cursor.fetchone()
+        
+        if result and result[0]:
+            logo_path = result[0]
+            # Remove leading slash if present
+            if logo_path.startswith('/'):
+                logo_path = logo_path[1:]
+            
+            # Delete the file if it exists
+            file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), logo_path)
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                print(f"Deleted logo file: {file_path}")
+        
+        # Update database to remove logo URL
+        cursor.execute("UPDATE company_settings SET company_logo_url = NULL, updated_at = GETDATE() WHERE user_id = ?", (current_user.id,))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"success": True, "message": "Logo removed successfully"}), 200
+        
+    except Exception as e:
+        print(f"Error removing logo: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/static/<path:filename>')
+def serve_static(filename):
+    """Serve static files (like uploaded logos)"""
+    from flask import send_from_directory
+    return send_from_directory('static', filename)
 
 # ============================================
 # DASHBOARD STATS ROUTE

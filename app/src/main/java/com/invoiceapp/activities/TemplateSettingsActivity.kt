@@ -1,5 +1,6 @@
 package com.invoiceapp.activities
 
+import android.graphics.Bitmap
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -8,18 +9,18 @@ import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.invoiceapp.R
 import com.invoiceapp.databinding.ActivityTemplateSettingsBinding
-import com.invoiceapp.models.TemplateInfo
-import com.invoiceapp.network.ApiResponse
+import com.invoiceapp.models.InvoiceTemplate
+import com.invoiceapp.models.InvoiceTemplates
 import com.invoiceapp.network.RetrofitClient
-import com.invoiceapp.utils.InvoiceTemplateManager
 import com.invoiceapp.utils.SessionManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class TemplateSettingsActivity : BaseActivity() {
 
@@ -46,7 +47,7 @@ class TemplateSettingsActivity : BaseActivity() {
     }
 
     private fun setupRecyclerView() {
-        adapter = TemplateAdapter(InvoiceTemplateManager.templates) { template ->
+        adapter = TemplateAdapter(InvoiceTemplates.templates) { template ->
             showTemplatePreview(template)
         }
 
@@ -57,51 +58,66 @@ class TemplateSettingsActivity : BaseActivity() {
     }
 
     private fun loadCurrentTemplate() {
-        // Load from backend to ensure it's in sync
         lifecycleScope.launch {
             try {
                 val response = RetrofitClient.apiService.getUserTemplate()
                 if (response.isSuccessful && response.body() != null) {
                     val templateId = response.body()!!.template
                     sessionManager.saveInvoiceTemplate(templateId)
-                    val currentTemplate = InvoiceTemplateManager.getTemplateInfo(templateId)
+                    val currentTemplate = InvoiceTemplates.getTemplate(templateId)
                     binding.currentTemplateText.text = "Current: ${currentTemplate.name}"
                 } else {
-                    // Fallback to local
                     val currentTemplateId = sessionManager.getInvoiceTemplate()
-                    val currentTemplate = InvoiceTemplateManager.getTemplateInfo(currentTemplateId)
+                    val currentTemplate = InvoiceTemplates.getTemplate(currentTemplateId)
                     binding.currentTemplateText.text = "Current: ${currentTemplate.name}"
                 }
             } catch (e: Exception) {
-                // Fallback to local
                 val currentTemplateId = sessionManager.getInvoiceTemplate()
-                val currentTemplate = InvoiceTemplateManager.getTemplateInfo(currentTemplateId)
+                val currentTemplate = InvoiceTemplates.getTemplate(currentTemplateId)
                 binding.currentTemplateText.text = "Current: ${currentTemplate.name}"
             }
         }
     }
 
-    private fun showTemplatePreview(template: TemplateInfo) {
+    private fun showTemplatePreview(template: InvoiceTemplate) {
+        // Show a larger preview dialog
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_template_preview, null)
+        val previewImage = dialogView.findViewById<ImageView>(R.id.previewImage)
+        val templateName = dialogView.findViewById<TextView>(R.id.templateName)
+        val templateDesc = dialogView.findViewById<TextView>(R.id.templateDesc)
+        val primaryColorText = dialogView.findViewById<TextView>(R.id.primaryColorText)
+        val secondaryColorText = dialogView.findViewById<TextView>(R.id.secondaryColorText)
+
+        templateName.text = template.name
+        templateDesc.text = template.description
+        primaryColorText.text = "Primary: ${template.primaryColor}"
+        secondaryColorText.text = "Secondary: ${template.secondaryColor}"
+
+        // Generate larger preview (400x560)
+        lifecycleScope.launch(Dispatchers.IO) {
+            val bitmap = template.getPreviewBitmap(this@TemplateSettingsActivity, 400, 560)
+            withContext(Dispatchers.Main) {
+                previewImage.setImageBitmap(bitmap)
+            }
+        }
+
         AlertDialog.Builder(this)
-            .setTitle(template.name)
-            .setMessage("${template.description}\n\nApply this template to your invoices?")
-            .setPositiveButton("Apply") { _, _ ->
+            .setTitle("Template Preview")
+            .setView(dialogView)
+            .setPositiveButton("Apply Template") { _, _ ->
                 applyTemplate(template)
             }
             .setNegativeButton("Cancel", null)
             .show()
     }
 
-    private fun applyTemplate(template: TemplateInfo) {
-        // Save to backend first
+    private fun applyTemplate(template: InvoiceTemplate) {
         lifecycleScope.launch {
             try {
-                // Show loading
                 Toast.makeText(this@TemplateSettingsActivity, "Applying template...", Toast.LENGTH_SHORT).show()
 
                 val response = RetrofitClient.apiService.updateUserTemplate(mapOf("template" to template.id))
                 if (response.isSuccessful) {
-                    // Save locally after successful backend update
                     sessionManager.saveInvoiceTemplate(template.id)
                     Toast.makeText(this@TemplateSettingsActivity, "Template '${template.name}' applied successfully!", Toast.LENGTH_LONG).show()
                     loadCurrentTemplate()
@@ -121,10 +137,9 @@ class TemplateSettingsActivity : BaseActivity() {
         return true
     }
 
-    // Adapter inner class
     inner class TemplateAdapter(
-        private val templates: List<TemplateInfo>,
-        private val onItemClick: (TemplateInfo) -> Unit
+        private val templates: List<InvoiceTemplate>,
+        private val onItemClick: (InvoiceTemplate) -> Unit
     ) : RecyclerView.Adapter<TemplateAdapter.ViewHolder>() {
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -140,15 +155,26 @@ class TemplateSettingsActivity : BaseActivity() {
         override fun getItemCount(): Int = templates.size
 
         inner class ViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+            private val templatePreviewImage: ImageView = itemView.findViewById(R.id.templatePreviewImage)
             private val templateName: TextView = itemView.findViewById(R.id.templateName)
             private val templateDesc: TextView = itemView.findViewById(R.id.templateDesc)
             private val templateColor: View = itemView.findViewById(R.id.templateColor)
             private val checkIcon: ImageView = itemView.findViewById(R.id.checkIcon)
 
-            fun bind(template: TemplateInfo) {
+            fun bind(template: InvoiceTemplate) {
                 templateName.text = template.name
                 templateDesc.text = template.description
                 templateColor.setBackgroundColor(android.graphics.Color.parseColor(template.primaryColor))
+
+                // Load preview image asynchronously
+                itemView.post {
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        val bitmap = template.getPreviewBitmap(itemView.context, 200, 280)
+                        withContext(Dispatchers.Main) {
+                            templatePreviewImage.setImageBitmap(bitmap)
+                        }
+                    }
+                }
 
                 val currentTemplate = sessionManager.getInvoiceTemplate()
                 checkIcon.visibility = if (currentTemplate == template.id) View.VISIBLE else View.GONE

@@ -2,7 +2,7 @@ package com.invoiceapp.network
 
 object Constants {
     // ONLY CHANGE THIS ONE LINE when your server IP changes
-    const val BASE_URL = "http://10.0.0.150:5000/"
+    const val BASE_URL = "http://192.168.8.150:5000/"
 
     // These are derived automatically from BASE_URL
     val BASE_HOST: String

@@ -9,14 +9,17 @@ import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.invoiceapp.R
 import com.invoiceapp.adapters.InvoiceItemAdapter
 import com.invoiceapp.databinding.ActivityCreateQuotationBinding
 import com.invoiceapp.models.*
+import com.invoiceapp.network.ApiResponse
 import com.invoiceapp.network.RetrofitClient
 import com.invoiceapp.utils.SessionManager
+import com.invoiceapp.viewmodels.SettingsViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
@@ -27,6 +30,7 @@ class CreateQuotationActivity : BaseActivity() {
 
     private lateinit var binding: ActivityCreateQuotationBinding
     private lateinit var itemAdapter: InvoiceItemAdapter
+    private lateinit var settingsViewModel: SettingsViewModel
     private val quotationItems = mutableListOf<InvoiceItemRequest>()
     private var selectedCustomer: Customer? = null
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
@@ -34,6 +38,7 @@ class CreateQuotationActivity : BaseActivity() {
     private lateinit var sessionManager: SessionManager
     private var customersList = listOf<Customer>()
     private var shouldRefreshCustomers = false
+    private var companySettings: CompanySettings? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -41,13 +46,17 @@ class CreateQuotationActivity : BaseActivity() {
         setContentView(binding.root)
 
         sessionManager = SessionManager(this)
+        settingsViewModel = ViewModelProvider(this)[SettingsViewModel::class.java]
 
         setupToolbar()
         setupRecyclerView()
         setupClickListeners()
         setupTextWatchers()
+        observeViewModel()
         loadCustomers()
         setDefaultDate()
+        
+        settingsViewModel.loadSettings()
     }
 
     override fun onResume() {
@@ -125,6 +134,22 @@ class CreateQuotationActivity : BaseActivity() {
         binding.rgTaxType.setOnCheckedChangeListener { _, _ ->
             calculateTotals()
         }
+    }
+
+    private fun observeViewModel() {
+        settingsViewModel.settings.observe(this) { result ->
+            if (result is ApiResponse.Success) {
+                companySettings = result.data
+                applyDefaultSettings(result.data)
+            }
+        }
+    }
+
+    private fun applyDefaultSettings(settings: CompanySettings) {
+        binding.etTaxRate.setText(settings.tax_rate_default.toString())
+        binding.etNotes.setText(settings.invoice_notes_default ?: "")
+        binding.etTermsConditions.setText(settings.terms_conditions_default ?: "")
+        binding.etFooterText.setText(settings.footer_text_default ?: "")
     }
 
     private fun loadCustomers() {
@@ -486,15 +511,15 @@ class CreateQuotationActivity : BaseActivity() {
         return InvoiceRequest(
             customer_id = selectedCustomer!!.id,
             invoice_date = binding.etQuotationDate.text.toString(),
-            due_date = null,  // Quotations don't have due dates
+            due_date = null,
             po_number = binding.etPoNumber.text.toString().trim().ifEmpty { null },
             tax_rate = binding.etTaxRate.text.toString().toDoubleOrNull() ?: 0.0,
             discount_amount = binding.etDiscount.text.toString().toDoubleOrNull() ?: 0.0,
             discount_type = "fixed",
             shipping_fee = binding.etShipping.text.toString().toDoubleOrNull() ?: 0.0,
             notes = binding.etNotes.text.toString().trim().ifEmpty { null },
-            terms_conditions = null,
-            footer_text = null,
+            terms_conditions = binding.etTermsConditions.text.toString().trim().ifEmpty { null },
+            footer_text = binding.etFooterText.text.toString().trim().ifEmpty { null },
             is_recurring = false,
             recurring_frequency = null,
             recurring_day = null,
