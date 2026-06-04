@@ -89,6 +89,8 @@ class InvoiceDetailActivity : BaseActivity() {
             intent.putExtra("invoice_number", currentInvoice?.invoice_number)
             intent.putExtra("customer_name", currentInvoice?.customer_name)
             intent.putExtra("customer_email", currentInvoice?.customer_email)
+            intent.putExtra("customer_phone", currentInvoice?.customer_phone)
+            intent.putExtra("balance_due", currentInvoice?.balance_due ?: 0.0)
             startActivity(intent)
         }
     }

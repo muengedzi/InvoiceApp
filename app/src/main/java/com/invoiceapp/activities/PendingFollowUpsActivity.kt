@@ -1,9 +1,12 @@
 package com.invoiceapp.activities
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.view.animation.AnimationUtils
+import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -13,10 +16,14 @@ import com.invoiceapp.R
 import com.invoiceapp.adapters.PendingFollowUpAdapter
 import com.invoiceapp.databinding.ActivityPendingFollowUpsBinding
 import com.invoiceapp.models.InvoiceFollowUp
+import com.invoiceapp.models.SendInvoiceEmailRequest
 import com.invoiceapp.network.RetrofitClient
 import com.invoiceapp.utils.SessionManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.net.URLEncoder
+import java.text.NumberFormat
+import java.util.Locale
 
 class PendingFollowUpsActivity : BaseActivity() {
 
@@ -24,6 +31,9 @@ class PendingFollowUpsActivity : BaseActivity() {
     private lateinit var sessionManager: SessionManager
     private lateinit var adapter: PendingFollowUpAdapter
     private var followUps = mutableListOf<InvoiceFollowUp>()
+    private val currencyFormat = NumberFormat.getCurrencyInstance(Locale("en", "ZA")).apply {
+        currency = java.util.Currency.getInstance("ZAR")
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -44,9 +54,15 @@ class PendingFollowUpsActivity : BaseActivity() {
     }
 
     private fun setupRecyclerView() {
-        adapter = PendingFollowUpAdapter(followUps) { followUp ->
-            showFollowUpActionsDialog(followUp)
-        }
+        adapter = PendingFollowUpAdapter(
+            followUps,
+            onItemClick = { followUp ->
+                showFollowUpActionsDialog(followUp)
+            },
+            onSendFollowUpClick = { followUp ->
+                sendFollowUpEmail(followUp)
+            }
+        )
         binding.recyclerView.layoutManager = LinearLayoutManager(this)
         binding.recyclerView.adapter = adapter
     }
@@ -91,11 +107,9 @@ class PendingFollowUpsActivity : BaseActivity() {
         options.add("View Invoice")
         actions.add { viewInvoice(followUp.invoiceId) }
 
-        // Send Follow-up (if not sent)
-        if (!followUp.messageSent) {
-            options.add("Send Follow-up Email")
-            actions.add { sendFollowUpEmail(followUp) }
-        }
+        // Send Follow-up. Keep this available even after a previous reminder was sent.
+        options.add("Send Follow-up Email & WhatsApp")
+        actions.add { sendFollowUpEmail(followUp) }
 
         // Mark as Sent (if not sent)
         if (!followUp.messageSent) {
@@ -128,11 +142,113 @@ class PendingFollowUpsActivity : BaseActivity() {
     }
 
     private fun sendFollowUpEmail(followUp: InvoiceFollowUp) {
-        val intent = Intent(this, CommunicationActivity::class.java)
-        intent.putExtra("invoice_id", followUp.invoiceId)
-        intent.putExtra("invoice_number", followUp.invoiceNumber)
-        intent.putExtra("customer_name", followUp.customerName)
-        startActivity(intent)
+        val subject = "Follow-up: Invoice #${followUp.invoiceNumber ?: followUp.invoiceId} payment reminder"
+        val defaultMessage = buildFollowUpMessage(followUp)
+
+        val dialogLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 16, 48, 0)
+        }
+        val subjectInput = EditText(this).apply {
+            hint = "Subject"
+            setText(subject)
+            setSingleLine(true)
+        }
+        val messageInput = EditText(this).apply {
+            hint = "Message"
+            setText(defaultMessage)
+            minLines = 5
+            gravity = android.view.Gravity.TOP
+        }
+        dialogLayout.addView(subjectInput)
+        dialogLayout.addView(messageInput)
+
+        AlertDialog.Builder(this)
+            .setTitle("Send Follow-up")
+            .setMessage("This will email the customer and then open WhatsApp with the same message ready to send.")
+            .setView(dialogLayout)
+            .setPositiveButton("Send") { _, _ ->
+                val finalSubject = subjectInput.text.toString().trim()
+                val finalMessage = messageInput.text.toString().trim()
+                if (finalSubject.isEmpty() || finalMessage.isEmpty()) {
+                    Toast.makeText(this, "Please enter a subject and message", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                sendFollowUpMessage(followUp, finalSubject, finalMessage)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun sendFollowUpMessage(followUp: InvoiceFollowUp, subject: String, message: String) {
+        lifecycleScope.launch {
+            try {
+                setProcessing(true, "Sending follow-up email...")
+                val request = SendInvoiceEmailRequest(
+                    invoiceId = followUp.invoiceId,
+                    subject = subject,
+                    message = message,
+                    isFollowUp = true
+                )
+                val response = RetrofitClient.apiService.sendInvoiceEmail(request)
+                if (response.isSuccessful && response.body() != null) {
+                    showProcessingSuccess("Follow-up email sent")
+                    Toast.makeText(this@PendingFollowUpsActivity, "Follow-up email sent", Toast.LENGTH_SHORT).show()
+                    openWhatsAppFollowUp(followUp, message)
+                    delay(450)
+                    loadPendingFollowUps()
+                } else {
+                    Toast.makeText(this@PendingFollowUpsActivity, "Failed to send follow-up email", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this@PendingFollowUpsActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            } finally {
+                setProcessing(false)
+            }
+        }
+    }
+
+    private fun buildFollowUpMessage(followUp: InvoiceFollowUp): String {
+        val invoiceNumber = followUp.invoiceNumber ?: followUp.invoiceId.toString()
+        val balance = currencyFormat.format(followUp.balanceDue ?: 0.0)
+        val daysOverdue = followUp.daysOverdue ?: 0
+        val overdueSentence = if (daysOverdue > 0) {
+            "The invoice is currently $daysOverdue day(s) overdue.\n\n"
+        } else {
+            "Please arrange payment at your earliest convenience.\n\n"
+        }
+        return "Dear ${followUp.customerName ?: "Customer"},\n\n" +
+            "This is a friendly reminder that invoice #$invoiceNumber has an outstanding balance of $balance. " +
+            overdueSentence +
+            "Please contact us if payment has already been made or if you need any assistance.\n\nThank you."
+    }
+
+    private fun openWhatsAppFollowUp(followUp: InvoiceFollowUp, message: String) {
+        val phone = normalizeWhatsAppPhone(followUp.customerPhone)
+        if (phone.isBlank()) {
+            Toast.makeText(this, "No customer phone number found for WhatsApp", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        val encodedMessage = URLEncoder.encode(message, "UTF-8")
+        val whatsappUri = Uri.parse("https://wa.me/$phone?text=$encodedMessage")
+        val intent = Intent(Intent.ACTION_VIEW, whatsappUri)
+        try {
+            startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Unable to open WhatsApp: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun normalizeWhatsAppPhone(rawPhone: String?): String {
+        var digits = rawPhone.orEmpty().filter { it.isDigit() }
+        if (digits.startsWith("00")) {
+            digits = digits.drop(2)
+        }
+        if (digits.startsWith("0") && digits.length == 10) {
+            digits = "27${digits.drop(1)}"
+        }
+        return digits
     }
 
     private fun markAsSent(followUp: InvoiceFollowUp) {

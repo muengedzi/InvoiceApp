@@ -1,5 +1,7 @@
 package com.invoiceapp.activities
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.view.animation.AnimationUtils
@@ -19,6 +21,9 @@ import com.invoiceapp.network.RetrofitClient
 import com.invoiceapp.utils.SessionManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.net.URLEncoder
+import java.text.NumberFormat
+import java.util.Locale
 
 class CommunicationActivity : BaseActivity() {
 
@@ -30,8 +35,13 @@ class CommunicationActivity : BaseActivity() {
     private var invoiceNumber: String = ""
     private var customerName: String = ""
     private var customerEmail: String = ""
+    private var customerPhone: String = ""
+    private var balanceDue: Double = 0.0
     private var communicationFilter: String? = null
     private var communicationTitle: String = "Communications"
+    private val currencyFormat = NumberFormat.getCurrencyInstance(Locale("en", "ZA")).apply {
+        currency = java.util.Currency.getInstance("ZAR")
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -43,6 +53,8 @@ class CommunicationActivity : BaseActivity() {
         invoiceNumber = intent.getStringExtra("invoice_number") ?: ""
         customerName = intent.getStringExtra("customer_name") ?: ""
         customerEmail = intent.getStringExtra("customer_email") ?: ""
+        customerPhone = intent.getStringExtra("customer_phone") ?: ""
+        balanceDue = intent.getDoubleExtra("balance_due", 0.0)
         communicationFilter = intent.getStringExtra("communication_filter")
         communicationTitle = intent.getStringExtra("communication_title") ?: "Communications"
 
@@ -149,10 +161,12 @@ class CommunicationActivity : BaseActivity() {
         val etSubject = dialogView.findViewById<EditText>(R.id.etSubject)
         val etMessage = dialogView.findViewById<EditText>(R.id.etMessage)
 
-        etSubject.setText("URGENT: Invoice #$invoiceNumber - Payment Overdue")
+        etSubject.setText("Follow-up: Invoice #$invoiceNumber payment reminder")
+        etMessage.setText(buildFollowUpMessage())
 
         AlertDialog.Builder(this)
-            .setTitle("Send Follow-up to $customerName")
+            .setTitle("Send Follow-up Email & WhatsApp")
+            .setMessage("This will email the customer and then open WhatsApp with the same message ready to send.")
             .setView(dialogView)
             .setPositiveButton("Send") { _, _ ->
                 val subject = etSubject.text.toString().trim()
@@ -163,7 +177,7 @@ class CommunicationActivity : BaseActivity() {
                     return@setPositiveButton
                 }
 
-                sendEmail(subject, message, true)
+                sendEmail(subject, message, true, openWhatsAppAfterSend = true)
             }
             .setNegativeButton("Cancel", null)
             .show()
@@ -194,7 +208,7 @@ class CommunicationActivity : BaseActivity() {
             .show()
     }
 
-    private fun sendEmail(subject: String, message: String, isFollowUp: Boolean) {
+    private fun sendEmail(subject: String, message: String, isFollowUp: Boolean, openWhatsAppAfterSend: Boolean = false) {
         lifecycleScope.launch {
             try {
                 setProcessing(true, if (isFollowUp) "Sending follow-up..." else "Sending message...")
@@ -208,6 +222,9 @@ class CommunicationActivity : BaseActivity() {
                 if (response.isSuccessful && response.body() != null) {
                     Toast.makeText(this@CommunicationActivity, "Email sent successfully", Toast.LENGTH_SHORT).show()
                     showProcessingSuccess(if (isFollowUp) "Follow-up sent" else "Message sent")
+                    if (openWhatsAppAfterSend) {
+                        openWhatsAppMessage(message)
+                    }
                     delay(450)
                     loadCommunications()
                 } else {
@@ -219,6 +236,42 @@ class CommunicationActivity : BaseActivity() {
                 setProcessing(false)
             }
         }
+    }
+
+    private fun buildFollowUpMessage(): String {
+        val balance = currencyFormat.format(balanceDue)
+        return "Dear ${customerName.ifBlank { "Customer" }},\n\n" +
+            "This is a friendly reminder that invoice #$invoiceNumber has an outstanding balance of $balance. " +
+            "Please arrange payment at your earliest convenience.\n\n" +
+            "Please contact us if payment has already been made or if you need any assistance.\n\nThank you."
+    }
+
+    private fun openWhatsAppMessage(message: String) {
+        val phone = normalizeWhatsAppPhone(customerPhone)
+        if (phone.isBlank()) {
+            Toast.makeText(this, "No customer phone number found for WhatsApp", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        val encodedMessage = URLEncoder.encode(message, "UTF-8")
+        val whatsappUri = Uri.parse("https://wa.me/$phone?text=$encodedMessage")
+        val intent = Intent(Intent.ACTION_VIEW, whatsappUri)
+        try {
+            startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Unable to open WhatsApp: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun normalizeWhatsAppPhone(rawPhone: String?): String {
+        var digits = rawPhone.orEmpty().filter { it.isDigit() }
+        if (digits.startsWith("00")) {
+            digits = digits.drop(2)
+        }
+        if (digits.startsWith("0") && digits.length == 10) {
+            digits = "27${digits.drop(1)}"
+        }
+        return digits
     }
 
     private fun sendReply(communicationId: Int, subject: String, message: String) {

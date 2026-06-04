@@ -11,7 +11,8 @@ import java.util.*
 
 class PendingFollowUpAdapter(
     private var items: List<InvoiceFollowUp>,
-    private val onItemClick: (InvoiceFollowUp) -> Unit
+    private val onItemClick: (InvoiceFollowUp) -> Unit,
+    private val onSendFollowUpClick: (InvoiceFollowUp) -> Unit
 ) : RecyclerView.Adapter<PendingFollowUpAdapter.ViewHolder>() {
 
     private val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.US)
@@ -67,6 +68,10 @@ class PendingFollowUpAdapter(
 
             binding.root.setOnClickListener {
                 onItemClick(item)
+            }
+
+            binding.btnSendFollowUp.setOnClickListener {
+                onSendFollowUpClick(item)
             }
         }
     }

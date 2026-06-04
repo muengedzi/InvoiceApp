@@ -79,8 +79,8 @@
           ]
         },
         {
-          "DockedWidth": 188,
-          "SelectedChildIndex": 5,
+          "DockedWidth": 186,
+          "SelectedChildIndex": 4,
           "Children": [
             {
               "$type": "Bookmark",
@@ -100,6 +100,19 @@
             },
             {
               "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "invoice_tasks.py",
+              "DocumentMoniker": "C:\\Users\\mueng\\OneDrive - Umzimkhulu Municipality\\Documents\\InvoiceApp2\\Flask\\invoice_tasks.py",
+              "RelativeDocumentMoniker": "invoice_tasks.py",
+              "ToolTip": "C:\\Users\\mueng\\OneDrive - Umzimkhulu Municipality\\Documents\\InvoiceApp2\\Flask\\invoice_tasks.py",
+              "RelativeToolTip": "invoice_tasks.py",
+              "ViewState": "AgIAAC4BAAAAAAAAAAAAADYBAAAEAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.002457|",
+              "WhenOpened": "2026-05-25T06:43:32.129Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
               "DocumentIndex": 2,
               "Title": "pdf_invoice.html",
               "DocumentMoniker": "C:\\Users\\mueng\\OneDrive - Umzimkhulu Municipality\\Documents\\InvoiceApp2\\Flask\\templates\\pdf_invoice.html",
@@ -108,21 +121,7 @@
               "RelativeToolTip": "templates\\pdf_invoice.html",
               "ViewState": "AgIAAA4DAAAAAAAAAAAnwEwCAAAjAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001512|",
-              "WhenOpened": "2026-05-09T07:51:10.069Z",
-              "EditorCaption": ""
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 1,
-              "Title": "invoice_tasks.py",
-              "DocumentMoniker": "C:\\Users\\mueng\\OneDrive - Umzimkhulu Municipality\\Documents\\InvoiceApp2\\Flask\\invoice_tasks.py",
-              "RelativeDocumentMoniker": "invoice_tasks.py",
-              "ToolTip": "C:\\Users\\mueng\\OneDrive - Umzimkhulu Municipality\\Documents\\InvoiceApp2\\Flask\\invoice_tasks.py",
-              "RelativeToolTip": "invoice_tasks.py",
-              "ViewState": "AgIAACYBAAAAAAAAAAAmwDYBAAAEAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.002457|",
-              "WhenOpened": "2026-05-25T06:43:32.129Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-05-09T07:51:10.069Z"
             },
             {
               "$type": "Document",
@@ -134,8 +133,7 @@
               "RelativeToolTip": "templates\\template_corporate.html",
               "ViewState": "AgIAAHUAAAAAAAAAAAAiwKAAAAAHAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001512|",
-              "WhenOpened": "2026-05-27T09:33:21.82Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-05-27T09:33:21.82Z"
             },
             {
               "$type": "Document",
@@ -147,8 +145,7 @@
               "RelativeToolTip": "templates\\template_classic.html",
               "ViewState": "AgIAABUDAAAAAAAAAAAYwEUDAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001512|",
-              "WhenOpened": "2026-05-27T09:32:32.444Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-05-27T09:32:32.444Z"
             },
             {
               "$type": "Document",
@@ -160,8 +157,7 @@
               "RelativeToolTip": "templates\\template_creative.html",
               "ViewState": "AgIAAAAAAAAAAAAAAAAAABkAAAAcAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001512|",
-              "WhenOpened": "2026-05-27T13:12:30.291Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-05-27T13:12:30.291Z"
             },
             {
               "$type": "Document",
@@ -173,8 +169,7 @@
               "RelativeToolTip": "templates\\template_elegant.html",
               "ViewState": "AgIAAAAAAAAAAAAAAAAAABkAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001512|",
-              "WhenOpened": "2026-05-27T13:12:05.712Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-05-27T13:12:05.712Z"
             },
             {
               "$type": "Document",
@@ -186,13 +181,12 @@
               "RelativeToolTip": "templates\\template_minimal.html",
               "ViewState": "AgIAAHYAAAAAAAAAAAAiwKEAAAAHAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001512|",
-              "WhenOpened": "2026-05-27T09:32:56.176Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-05-27T09:32:56.176Z"
             }
           ]
         },
         {
-          "DockedWidth": 191,
+          "DockedWidth": 193,
           "SelectedChildIndex": 1,
           "Children": [
             {
@@ -207,7 +201,7 @@
               "RelativeDocumentMoniker": "app.py",
               "ToolTip": "C:\\Users\\mueng\\OneDrive - Umzimkhulu Municipality\\Documents\\InvoiceApp2\\Flask\\app.py",
               "RelativeToolTip": "app.py",
-              "ViewState": "AgIAAD8AAAAAAAAAAAAIwEcAAAAiAAAAAAAAAA==",
+              "ViewState": "AgIAAIoCAAAAAAAAAAAAAOECAAAVAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.002457|",
               "WhenOpened": "2026-05-05T08:54:24.342Z",
               "EditorCaption": ""
@@ -222,8 +216,7 @@
               "RelativeToolTip": ".env",
               "ViewState": "AgIAAAAAAAAAAAAAAAAAAAUAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
-              "WhenOpened": "2026-05-25T14:20:52.97Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-05-25T14:20:52.97Z"
             },
             {
               "$type": "Document",
@@ -235,8 +228,7 @@
               "RelativeToolTip": "templates\\login_redirect.html",
               "ViewState": "AgIAABIAAAAAAAAAAAAwwD4AAAAHAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001512|",
-              "WhenOpened": "2026-05-25T13:56:55.208Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-05-25T13:56:55.208Z"
             },
             {
               "$type": "Document",
@@ -248,8 +240,7 @@
               "RelativeToolTip": "templates\\reset_password.html",
               "ViewState": "AgIAACkBAAAAAAAAAAAawDwBAAAOAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001512|",
-              "WhenOpened": "2026-05-25T13:53:45.584Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-05-25T13:53:45.584Z"
             }
           ]
         }

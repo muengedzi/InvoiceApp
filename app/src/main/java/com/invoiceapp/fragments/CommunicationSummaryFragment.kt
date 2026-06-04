@@ -18,6 +18,9 @@ import com.invoiceapp.activities.PendingFollowUpsActivity
 import com.invoiceapp.models.RecentCustomerReply
 import com.invoiceapp.network.RetrofitClient
 import com.invoiceapp.utils.SessionManager
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class CommunicationSummaryFragment : Fragment() {
@@ -37,6 +40,7 @@ class CommunicationSummaryFragment : Fragment() {
     private lateinit var cardSyncProcessing: View
     private lateinit var tvSyncProcessing: TextView
     private lateinit var progressBar: View
+    private var refreshJob: Job? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -71,8 +75,27 @@ class CommunicationSummaryFragment : Fragment() {
         loadCommunicationSummary()
     }
 
-    private fun loadCommunicationSummary() {
-        progressBar.visibility = View.VISIBLE
+    override fun onResume() {
+        super.onResume()
+        refreshJob?.cancel()
+        refreshJob = lifecycleScope.launch {
+            while (isActive) {
+                loadCommunicationSummary(showProgress = false)
+                delay(30000)
+            }
+        }
+    }
+
+    override fun onPause() {
+        refreshJob?.cancel()
+        refreshJob = null
+        super.onPause()
+    }
+
+    private fun loadCommunicationSummary(showProgress: Boolean = true) {
+        if (showProgress) {
+            progressBar.visibility = View.VISIBLE
+        }
 
         lifecycleScope.launch {
             try {
@@ -108,7 +131,9 @@ class CommunicationSummaryFragment : Fragment() {
             } catch (e: Exception) {
                 Toast.makeText(requireContext(), "Error loading summary: ${e.message}", Toast.LENGTH_SHORT).show()
             } finally {
-                progressBar.visibility = View.GONE
+                if (showProgress) {
+                    progressBar.visibility = View.GONE
+                }
             }
         }
     }

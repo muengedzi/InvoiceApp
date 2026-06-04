@@ -10,63 +10,90 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
+        android:orientation="vertical"
         android:padding="12dp">
 
         <LinearLayout
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical">
+            android:orientation="horizontal">
 
-            <TextView
-                android:id="@+id/tvInvoiceNumber"
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tvInvoiceNumber"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="INV-001"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvCustomerName"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Customer Name"
+                    android:textSize="12sp"
+                    android:textColor="@android:color/darker_gray" />
+
+                <TextView
+                    android:id="@+id/tvDueDate"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Due: Jan 01, 2024"
+                    android:textSize="11sp"
+                    android:textColor="@android:color/darker_gray" />
+
+            </LinearLayout>
+
+            <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="INV-001"
-                android:textSize="14sp"
-                android:textStyle="bold" />
+                android:orientation="vertical"
+                android:gravity="end">
 
-            <TextView
-                android:id="@+id/tvCustomerName"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Customer Name"
-                android:textSize="12sp"
-                android:textColor="@android:color/darker_gray" />
+                <TextView
+                    android:id="@+id/tvBalanceDue"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="R0.00"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:textColor="#F44336" />
 
-            <TextView
-                android:id="@+id/tvDueDate"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Due: Jan 01, 2024"
-                android:textSize="11sp"
-                android:textColor="@android:color/darker_gray" />
+                <TextView
+                    android:id="@+id/tvStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Pending"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
+            </LinearLayout>
 
         </LinearLayout>
 
         <LinearLayout
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:gravity="end">
+            android:gravity="center">
 
-            <TextView
-                android:id="@+id/tvBalanceDue"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="R0.00"
-                android:textSize="14sp"
-                android:textStyle="bold"
-                android:textColor="#F44336" />
-
-            <TextView
-                android:id="@+id/tvStatus"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Pending"
-                android:textSize="11sp"
-                android:textStyle="bold" />
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSendFollowUp"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="240dp"
+                android:layout_height="44dp"
+                android:layout_marginTop="10dp"
+                android:text="Send Email &amp; WhatsApp"
+                android:textAllCaps="false"
+                android:maxLines="1"
+                app:cornerRadius="8dp"
+                app:icon="@android:drawable/ic_dialog_email"
+                app:iconGravity="textStart" />
 
         </LinearLayout>
 

@@ -90,6 +90,12 @@ data class InvoiceFollowUp(
     @SerializedName("customer_name")
     val customerName: String? = null,
 
+    @SerializedName("customer_email")
+    val customerEmail: String? = null,
+
+    @SerializedName("customer_phone")
+    val customerPhone: String? = null,
+
     @SerializedName("follow_up_date")
     val followUpDate: String,
 

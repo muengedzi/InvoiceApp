@@ -104,7 +104,6 @@ def get_db_connection():
     )
     return pyodbc.connect(conn_str)
 
-
 # Email Configuration
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
@@ -1626,7 +1625,7 @@ def create_invoice_pdf_html(invoice, items):
         format_currency=format_currency
     )
 
-def send_invoice_email_helper(invoice_id, user_id=None):
+def send_invoice_email_helper(invoice_id, user_id=None, tracking_url=None):
     """Helper function to send invoice email - renamed to avoid conflict"""
     if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
         raise Exception("Email settings are missing. Configure EMAIL_ADDRESS and EMAIL_PASSWORD in Flask/.env.")
@@ -1643,6 +1642,11 @@ def send_invoice_email_helper(invoice_id, user_id=None):
     invoice_number = invoice.get('invoice_number', '')
     subject = f"Invoice {invoice_number} from {company_name}"
     html_content = create_invoice_pdf_html(invoice, items)
+    if tracking_url:
+        html_content = html_content.replace(
+            "</body>",
+            f'<img src="{tracking_url}" width="1" height="1" alt="" style="display:none;width:1px;height:1px;border:0;" /></body>'
+        )
 
     msg = MIMEMultipart('mixed')
     msg["From"] = EMAIL_ADDRESS
@@ -1696,18 +1700,21 @@ def record_invoice_sent_communication(invoice_id, user_id, sent_to):
     if invoice:
         invoice_number, customer_id, total_amount, customer_name = invoice
         subject = f"Invoice {invoice_number}"
-        message = (
-            f"Invoice {invoice_number} was emailed to {customer_name} "
-            f"at {sent_to}. Amount: R{float(total_amount or 0):,.2f}"
-        )
+        sent_to_text = f" at {sent_to}" if sent_to else ""
+        message = f"Invoice {invoice_number} was emailed to {customer_name}{sent_to_text}. Amount: R{float(total_amount or 0):,.2f}"
         cursor.execute("""
             INSERT INTO invoice_communications
             (invoice_id, customer_id, communication_type, subject, message_body, sent_at, created_by)
+            OUTPUT INSERTED.id
             VALUES (?, ?, 'sent', ?, ?, GETDATE(), ?)
         """, (invoice_id, customer_id, subject, message, user_id))
+        communication_id = cursor.fetchone()[0]
         conn.commit()
+    else:
+        communication_id = None
 
     conn.close()
+    return communication_id
 
 @app.route('/api/invoices/<int:invoice_id>/send', methods=['POST'])
 @login_required
@@ -1738,14 +1745,28 @@ def send_invoice(invoice_id):
         conn.close()
 
     try:
-        sent_to = send_invoice_email_helper(invoice_id)  # Changed here
-        record_invoice_sent_communication(invoice_id, current_user.id, sent_to)
+        communication_id = record_invoice_sent_communication(invoice_id, current_user.id, "")
+        tracking_url = url_for(
+            'track_communication_open',
+            communication_id=communication_id,
+            _external=True
+        ) if communication_id else None
+        sent_to = send_invoice_email_helper(invoice_id, tracking_url=tracking_url)  # Changed here
         return jsonify({
             "success": True,
             "message": "Invoice sent successfully",
             "sent_to": sent_to
         }), 200
     except Exception as e:
+        if 'communication_id' in locals() and communication_id:
+            try:
+                cleanup_conn = get_db_connection()
+                cleanup_cursor = cleanup_conn.cursor()
+                cleanup_cursor.execute("DELETE FROM invoice_communications WHERE id = ?", (communication_id,))
+                cleanup_conn.commit()
+                cleanup_conn.close()
+            except Exception as cleanup_error:
+                print(f"Error cleaning failed communication record: {cleanup_error}")
         return jsonify({
             "success": False,
             "error": str(e),
@@ -4015,6 +4036,34 @@ def get_invoice_communications(invoice_id):
         print(f"Error getting communications: {e}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/invoices/communications/<int:communication_id>/open.gif', methods=['GET'])
+def track_communication_open(communication_id):
+    """Track email opens using a transparent 1x1 GIF embedded in outgoing emails."""
+    pixel = (
+        b'GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!'
+        b'\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01'
+        b'\x00\x00\x02\x02D\x01\x00;'
+    )
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE invoice_communications
+            SET is_read_by_customer = 1,
+                read_at = COALESCE(read_at, GETDATE())
+            WHERE id = ?
+        """, (communication_id,))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Error tracking communication open: {e}")
+
+    response = make_response(pixel)
+    response.headers['Content-Type'] = 'image/gif'
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    return response
+
 @app.route('/api/invoices/send-email', methods=['POST'])
 @login_required
 def send_invoice_email():
@@ -4035,6 +4084,7 @@ def send_invoice_email():
                 i.id, 
                 i.invoice_number, 
                 i.total_amount, 
+                i.balance_due,
                 i.status,
                 c.id as customer_id, 
                 c.customer_name, 
@@ -4053,10 +4103,11 @@ def send_invoice_email():
         invoice_id_db = invoice[0]
         invoice_number = invoice[1]
         invoice_amount = float(invoice[2]) if invoice[2] else 0
-        invoice_status = invoice[3]
-        customer_id = invoice[4]
-        customer_name = invoice[5]
-        customer_email = invoice[6]  # This should be the email address
+        balance_due = float(invoice[3]) if invoice[3] else 0
+        invoice_status = invoice[4]
+        customer_id = invoice[5]
+        customer_name = invoice[6]
+        customer_email = invoice[7]  # This should be the email address
         
         # VALIDATE EMAIL - Critical fix
         if not customer_email or '@' not in customer_email:
@@ -4066,6 +4117,22 @@ def send_invoice_email():
                 "error": f"Customer '{customer_name}' has an invalid email address: '{customer_email}'. Please update the customer's email before sending."
             }), 400
         
+        cursor.execute("""
+            INSERT INTO invoice_communications 
+            (invoice_id, customer_id, communication_type, subject, message_body, sent_at, created_by)
+            OUTPUT INSERTED.id
+            VALUES (?, ?, ?, ?, ?, GETDATE(), ?)
+        """, (invoice_id, customer_id, 'follow_up' if is_follow_up else 'sent',
+              subject, message, current_user.id))
+        communication_id = cursor.fetchone()[0]
+        conn.commit()
+
+        tracking_url = url_for(
+            'track_communication_open',
+            communication_id=communication_id,
+            _external=True
+        )
+
         # Send email using the correct email address
         email_sent = send_customer_email_message(
             to_email=customer_email,  # CRITICAL: Use customer_email, not customer_name
@@ -4073,19 +4140,29 @@ def send_invoice_email():
             subject=subject,
             body=message,
             invoice_number=invoice_number,
-            invoice_amount=invoice_amount,
-            invoice_status=invoice_status
+            invoice_amount=balance_due if is_follow_up else invoice_amount,
+            invoice_status=invoice_status,
+            tracking_url=tracking_url,
+            amount_label="Balance Due" if is_follow_up else "Amount"
         )
         
         if email_sent:
-            # Record communication
-            cursor.execute("""
-                INSERT INTO invoice_communications 
-                (invoice_id, customer_id, communication_type, subject, message_body, sent_at, created_by)
-                VALUES (?, ?, ?, ?, ?, GETDATE(), ?)
-            """, (invoice_id, customer_id, 'follow_up' if is_follow_up else 'sent', 
-                  subject, message, current_user.id))
+            if is_follow_up:
+                cursor.execute("""
+                    IF EXISTS (SELECT 1 FROM invoice_follow_ups WHERE invoice_id = ?)
+                        UPDATE invoice_follow_ups
+                        SET message_sent = 1,
+                            message_sent_at = GETDATE()
+                        WHERE invoice_id = ?
+                    ELSE
+                        INSERT INTO invoice_follow_ups
+                        (invoice_id, follow_up_date, follow_up_type, message_sent, message_sent_at, completed)
+                        VALUES (?, GETDATE(), 'standard', 1, GETDATE(), 0)
+                """, (invoice_id, invoice_id, invoice_id))
             
+            conn.commit()
+        else:
+            cursor.execute("DELETE FROM invoice_communications WHERE id = ?", (communication_id,))
             conn.commit()
         
         conn.close()
@@ -4343,6 +4420,8 @@ def get_pending_follow_ups():
                 i.invoice_number,
                 c.id as customer_id,
                 c.customer_name,
+                c.email as customer_email,
+                c.phone as customer_phone,
                 i.total_amount,
                 i.balance_due,
                 i.due_date,
@@ -4379,18 +4458,20 @@ def get_pending_follow_ups():
                 "invoice_number": row[1],
                 "customer_id": row[2],
                 "customer_name": row[3],
-                "total_amount": float(row[4]) if row[4] else 0,
-                "balance_due": float(row[5]) if row[5] else 0,
-                "follow_up_date": row[6].isoformat() if row[6] else None,
-                "status": row[7],
-                "days_overdue": row[8] if row[8] else 0,
-                "follow_up_type": row[9] if row[9] else 'standard',
-                "completed": bool(row[10]) if row[10] is not None else False,
-                "message_sent": bool(row[11]) if row[11] is not None else False,
-                "customer_responded": bool(row[12]) if row[12] is not None else False,
-                "message_sent_at": row[13].isoformat() if row[13] else None,
-                "responded_at": row[14].isoformat() if row[14] else None,
-                "notes": row[15]
+                "customer_email": row[4],
+                "customer_phone": row[5],
+                "total_amount": float(row[6]) if row[6] else 0,
+                "balance_due": float(row[7]) if row[7] else 0,
+                "follow_up_date": row[8].isoformat() if row[8] else None,
+                "status": row[9],
+                "days_overdue": row[10] if row[10] else 0,
+                "follow_up_type": row[11] if row[11] else 'standard',
+                "completed": bool(row[12]) if row[12] is not None else False,
+                "message_sent": bool(row[13]) if row[13] is not None else False,
+                "customer_responded": bool(row[14]) if row[14] is not None else False,
+                "message_sent_at": row[15].isoformat() if row[15] else None,
+                "responded_at": row[16].isoformat() if row[16] else None,
+                "notes": row[17]
             })
         
         conn.close()
@@ -4585,7 +4666,7 @@ def get_customer_communication_thread(customer_id):
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-def send_customer_email_message(to_email, to_name, subject, body, invoice_number=None, invoice_amount=None, invoice_status=None, is_reply=False):
+def send_customer_email_message(to_email, to_name, subject, body, invoice_number=None, invoice_amount=None, invoice_status=None, is_reply=False, tracking_url=None, amount_label="Amount"):
     """Helper function to send emails to customers"""
     try:
         
@@ -4598,6 +4679,10 @@ def send_customer_email_message(to_email, to_name, subject, body, invoice_number
         
         to_email = str(to_email).strip().lower()
         
+        tracking_pixel = ""
+        if tracking_url:
+            tracking_pixel = f'<img src="{tracking_url}" width="1" height="1" alt="" style="display:none;width:1px;height:1px;border:0;" />'
+
         # Build email content (same as before)
         if invoice_number and not is_reply:
             html_content = f"""
@@ -4610,10 +4695,11 @@ def send_customer_email_message(to_email, to_name, subject, body, invoice_number
                     <p>{body}</p>
                     <div style="background: white; padding: 15px; border-radius: 8px; margin: 15px 0;">
                         <p><strong>Invoice #{invoice_number}</strong></p>
-                        <p>Amount: R{invoice_amount:,.2f}</p>
+                        <p>{amount_label}: R{invoice_amount:,.2f}</p>
                         <p>Status: {invoice_status.upper()}</p>
                     </div>
                     <p>Best regards,<br>Broadband LifeStyle Team</p>
+                    {tracking_pixel}
                 </div>
             </body>
             </html>
@@ -4628,6 +4714,7 @@ def send_customer_email_message(to_email, to_name, subject, body, invoice_number
                     <p>Dear {to_name},</p>
                     <p>{body}</p>
                     <p>Best regards,<br>Broadband LifeStyle Team</p>
+                    {tracking_pixel}
                 </div>
             </body>
             </html>
