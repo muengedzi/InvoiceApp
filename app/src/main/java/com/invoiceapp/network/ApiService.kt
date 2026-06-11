@@ -295,4 +295,41 @@ interface ApiService {
 
     @PUT("/api/user/template")
     suspend fun updateUserTemplate(@Body request: Map<String, String>): Response<Map<String, Any>>
+
+    // ==================== RECURRING INVOICE TEMPLATE ENDPOINTS ====================
+
+    @GET("/api/recurring-templates")
+    suspend fun getRecurringTemplates(): Response<List<RecurringTemplate>>
+
+    @GET("/api/recurring-templates/{id}")
+    suspend fun getRecurringTemplate(@Path("id") id: Int): Response<RecurringTemplate>
+
+    @POST("/api/recurring-templates")
+    suspend fun createRecurringTemplate(@Body request: RecurringTemplateRequest): Response<Map<String, Any>>
+
+    @PUT("/api/recurring-templates/{id}")
+    suspend fun updateRecurringTemplate(
+        @Path("id") id: Int,
+        @Body request: Any
+    ): Response<Map<String, Any>>
+
+    @DELETE("/api/recurring-templates/{id}")
+    suspend fun deleteRecurringTemplate(@Path("id") id: Int): Response<Map<String, Any>>
+
+    @POST("/api/recurring-templates/{id}/generate-invoice")
+    suspend fun generateInvoiceFromTemplate(@Path("id") id: Int): Response<Map<String, Any>>
+
+    // Optional: Keep existing recurring invoice endpoints (they work differently)
+// These are for invoices that are themselves recurring
+    @GET("/api/recurring-invoices/queue-status")
+    suspend fun getRecurringQueueStatus(): Response<Map<String, Any>>
+
+    @POST("/api/recurring-invoices/process-due")
+    suspend fun processDueRecurringInvoices(): Response<Map<String, Any>>
+
+    @PUT("/api/recurring-templates/{id}/status")
+    suspend fun updateRecurringTemplateStatus(
+        @Path("id") id: Int,
+        @Body request: Map<String, String>
+    ): Response<Map<String, Any>>
 }

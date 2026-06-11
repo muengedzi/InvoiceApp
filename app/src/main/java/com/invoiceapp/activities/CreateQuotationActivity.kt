@@ -520,10 +520,6 @@ class CreateQuotationActivity : BaseActivity() {
             notes = binding.etNotes.text.toString().trim().ifEmpty { null },
             terms_conditions = binding.etTermsConditions.text.toString().trim().ifEmpty { null },
             footer_text = binding.etFooterText.text.toString().trim().ifEmpty { null },
-            is_recurring = false,
-            recurring_frequency = null,
-            recurring_day = null,
-            recurring_active = false,
             items = quotationItems.toList(),
             status = "quotation",
             tax_type = if (binding.rbTaxInclusive.isChecked) "inclusive" else "exclusive"

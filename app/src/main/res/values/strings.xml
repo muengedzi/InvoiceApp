@@ -53,4 +53,8 @@
     <string name="payment_type">Payment Type</string>
     <string name="full_payment">Full Payment</string>
     <string name="partial_payment">Partial Payment</string>
+    <string name="title_recurring">Recurring</string>
+    <string name="title_templates">Templates</string>
+    <string name="recurring_templates_format">%1$d Templates</string>
+    <string name="menu_recurring_templates">Recurring Templates</string>
 </resources>

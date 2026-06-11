@@ -61,6 +61,10 @@ class DashboardFragment : Fragment() {
         binding.cardExpenses.setOnClickListener {
             (requireActivity() as? MainActivity)?.navigateToExpenses()
         }
+
+        binding.cardRecurringInvoices.setOnClickListener {
+            (requireActivity() as? MainActivity)?.navigateToRecurringInvoices()
+        }
     }
 
     private fun setupRecyclerViews() {
@@ -124,6 +128,11 @@ class DashboardFragment : Fragment() {
         // Card 4: Expenses - Main: Amount (no count for expenses)
         binding.tvStatValueProfit.text = formatCurrency(stats.total_expenses)
         binding.tvStatLabelProfit.text = "Expenses"
+
+        // Card 5: Recurring Templates - Show both count and total amount
+        binding.tvStatRecurring.text = getString(R.string.recurring_templates_format, stats.recurring_count)
+        binding.tvStatRecurringAmount.text = formatCurrency(stats.recurring_total_amount)  // Add this line
+        binding.tvStatRecurringAmount.visibility = View.VISIBLE
 
         // Update recent invoices
         invoiceAdapter.submitList(stats.recent_invoices)

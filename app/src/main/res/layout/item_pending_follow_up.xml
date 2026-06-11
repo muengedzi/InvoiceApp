@@ -84,13 +84,15 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnSendFollowUp"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                style="@style/Widget.MaterialComponents.Button"
                 android:layout_width="240dp"
                 android:layout_height="44dp"
                 android:layout_marginTop="10dp"
                 android:text="Send Email &amp; WhatsApp"
                 android:textAllCaps="false"
+                android:textColor="?attr/colorOnPrimary"
                 android:maxLines="1"
+                app:backgroundTint="?attr/colorPrimary"
                 app:cornerRadius="8dp"
                 app:icon="@android:drawable/ic_dialog_email"
                 app:iconGravity="textStart" />

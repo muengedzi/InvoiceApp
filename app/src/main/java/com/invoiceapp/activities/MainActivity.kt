@@ -186,6 +186,14 @@ class MainActivity : BaseActivity() {
                 startActivity(intent)
                 true
             }
+            R.id.menu_recurring_invoices -> {
+                loadFragment(RecurringInvoicesFragment())
+                supportActionBar?.title = "Recurring Invoices"
+                supportActionBar?.setDisplayHomeAsUpEnabled(true)
+                showingMenuPage = true
+                hideFAB()
+                true
+            }
             R.id.menu_communications -> {
                 loadFragment(CommunicationSummaryFragment())
                 supportActionBar?.title = "Communications"
@@ -252,6 +260,14 @@ class MainActivity : BaseActivity() {
 
     fun navigateToExpenses() {
         findViewById<BottomNavigationView>(R.id.bottomNavigation).selectedItemId = R.id.navigation_expenses
+    }
+
+    fun navigateToRecurringInvoices() {
+        loadFragment(RecurringInvoicesFragment())
+        supportActionBar?.title = "Recurring Invoices"
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        showingMenuPage = true
+        hideFAB()
     }
 
     fun navigateToPendingFollowUps() {

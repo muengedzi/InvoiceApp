@@ -1,13 +1,18 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Base Theme -->
-    <style name="Theme.InvoiceApp.Base" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+    <style name="Theme.InvoiceApp.Base" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
-        <item name="materialButtonStyle">@style/Widget.App.Button</item>
-        <item name="textInputStyle">@style/Widget.App.TextInputLayout</item>
-        <item name="bottomNavigationStyle">@style/Widget.App.BottomNavigationView</item>
+
+        <!-- Custom Attributes - Default values to prevent inflation errors -->
+        <item name="colorTextSecondary">@color/gray_600</item>
+        <item name="colorSurfaceSoft">@color/gray_100</item>
+        <item name="colorBorderSoft">@color/gray_300</item>
+        <item name="colorError">@color/error</item>
+        <item name="colorSuccess">@color/success</item>
+        <item name="colorWarning">@color/warning</item>
     </style>
 
     <!-- Light Theme (Default) -->
@@ -37,7 +42,7 @@
         <item name="colorOnSecondary">@color/white</item>
         <item name="colorSurface">@color/surface_card_dark</item>
         <item name="colorOnSurface">@color/text_primary_dark</item>
-        <item name="colorSurfaceSoft">@color/surface_soft</item>
+        <item name="colorSurfaceSoft">@color/primary_dark_dark_theme</item>
         <item name="colorTextSecondary">@color/text_secondary_dark</item>
         <item name="colorBorderSoft">@color/border_soft_dark</item>
         <item name="android:colorBackground">@color/app_background_dark</item>
@@ -103,13 +108,13 @@
     <style name="Theme.InvoiceApp" parent="Theme.InvoiceApp.Light" />
 
     <!-- Widget Styles -->
-    <style name="Widget.App.Button" parent="Widget.MaterialComponents.Button">
+    <style name="Widget.App.Button" parent="Widget.Material3.Button">
         <item name="cornerRadius">12dp</item>
         <item name="android:textAllCaps">false</item>
         <item name="android:minHeight">48dp</item>
     </style>
 
-    <style name="Widget.App.TextInputLayout" parent="Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+    <style name="Widget.App.TextInputLayout" parent="Widget.Material3.TextInputLayout.OutlinedBox">
         <item name="boxCornerRadiusTopStart">12dp</item>
         <item name="boxCornerRadiusTopEnd">12dp</item>
         <item name="boxCornerRadiusBottomStart">12dp</item>
@@ -118,7 +123,7 @@
         <item name="hintTextColor">?attr/colorTextSecondary</item>
     </style>
 
-    <style name="Widget.App.BottomNavigationView" parent="Widget.MaterialComponents.BottomNavigationView">
+    <style name="Widget.App.BottomNavigationView" parent="Widget.Material3.BottomNavigationView">
         <item name="backgroundTint">?attr/colorSurface</item>
         <item name="itemIconTint">@color/bottom_nav_colors</item>
         <item name="itemTextColor">@color/bottom_nav_colors</item>
@@ -132,7 +137,7 @@
         <item name="android:windowFullscreen">true</item>
     </style>
 
-    <style name="Theme.InvoiceApp.FullScreenDialog" parent="Theme.MaterialComponents.DayNight.Dialog">
+    <style name="Theme.InvoiceApp.FullScreenDialog" parent="Theme.Material3.DayNight.Dialog">
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowIsFloating">true</item>
         <item name="android:windowMinWidthMajor">90%</item>

@@ -13,6 +13,11 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:mimeType="application/pdf" />
         </intent>
+        <!-- Email clients for sending invoices -->
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="mailto" />
+        </intent>
     </queries>
 
     <application
@@ -25,6 +30,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.InvoiceApp"
         android:usesCleartextTraffic="true"
+        android:enableOnBackInvokedCallback="true"
         tools:targetApi="31">
 
         <!-- Splash Screen (Launcher) -->
@@ -79,6 +85,14 @@
         <activity
             android:name=".activities.InvoiceDetailActivity"
             android:exported="false" />
+
+        <!-- Recurring Invoices Activity -->
+        <activity
+            android:name=".activities.CreateRecurringTemplateActivity"
+            android:exported="false"
+            android:label="Recurring Invoice Template"
+            android:windowSoftInputMode="adjustResize"
+            android:parentActivityName=".activities.MainActivity" />
 
         <!-- Quotation Activity -->
         <activity
@@ -138,8 +152,8 @@
             android:label="Pending Follow-ups"
             android:parentActivityName=".activities.MainActivity" />
 
-        <!-- Email Verification - Using placeholders that will be replaced at build time -->
-        <!-- Email Verification - Accepts any host (will be validated in code) -->        <activity
+        <!-- Email Verification -->
+        <activity
             android:name=".activities.VerifyEmailActivity"
             android:exported="true"
             android:launchMode="singleTop">
@@ -147,7 +161,6 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <!-- Accept any host - we'll validate in the activity -->
                 <data android:scheme="http"
                     android:host="*"
                     android:pathPattern="/verify-email-page" />

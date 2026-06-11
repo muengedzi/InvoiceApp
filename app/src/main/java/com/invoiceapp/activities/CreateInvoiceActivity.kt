@@ -7,6 +7,7 @@ import android.content.Intent
 import android.text.Editable
 import android.text.TextWatcher
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.view.animation.LinearInterpolator
 import android.widget.ArrayAdapter
@@ -63,6 +64,10 @@ class CreateInvoiceActivity : BaseActivity() {
         "yearly" to "Yearly (Every year)"
     )
 
+    companion object {
+        private const val TAG = "CreateInvoiceActivity"
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityCreateInvoiceBinding.inflate(layoutInflater)
@@ -85,7 +90,7 @@ class CreateInvoiceActivity : BaseActivity() {
             invoiceViewModel.getInvoiceDetail(editingInvoiceId!!)
         } else {
             setDefaultDates()
-            settingsViewModel.loadSettings() // To pre-fill defaults
+            settingsViewModel.loadSettings()
         }
     }
 
@@ -176,7 +181,6 @@ class CreateInvoiceActivity : BaseActivity() {
             finish()
         }
 
-        // Recurring checkbox listener
         binding.chkRecurring.setOnCheckedChangeListener { _, isChecked ->
             binding.layoutRecurringOptions.visibility = if (isChecked) View.VISIBLE else View.GONE
             if (isChecked) {
@@ -186,14 +190,12 @@ class CreateInvoiceActivity : BaseActivity() {
             }
         }
 
-        // Frequency change listener
         binding.etRecurringFrequency.setOnItemClickListener { _, _, position, _ ->
             val selectedFrequency = frequencies[position]
             updateSendDayVisibility(selectedFrequency)
             updateNextSendDateInfo()
         }
 
-        // Recurring day change listener
         binding.etRecurringDay.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
@@ -298,7 +300,12 @@ class CreateInvoiceActivity : BaseActivity() {
                 is ApiResponse.Loading -> showLoading(true)
                 is ApiResponse.Success -> {
                     showLoading(false)
-                    showSuccessAndFinish("Invoice saved successfully!")
+                    // If recurring was checked, also create the template
+                    if (binding.chkRecurring.isChecked) {
+                        createRecurringTemplateSeparately()
+                    } else {
+                        showSuccessAndFinish("Invoice saved successfully!")
+                    }
                 }
                 is ApiResponse.Error -> {
                     showLoading(false)
@@ -386,7 +393,6 @@ class CreateInvoiceActivity : BaseActivity() {
         binding.etInvoiceDate.setText(invoice.invoice_date)
         binding.tvSelectedDate.text = formatDateForDisplay(invoice.invoice_date)
 
-        // Set due date for invoice editing
         if (!invoice.due_date.isNullOrEmpty() && invoice.due_date != "null") {
             binding.etDueDate.setText(invoice.due_date)
             binding.tvSelectedDueDate.text = formatDateForDisplay(invoice.due_date)
@@ -404,29 +410,15 @@ class CreateInvoiceActivity : BaseActivity() {
         binding.etTermsConditions.setText(invoice.terms_conditions ?: "")
         binding.etFooterText.setText(invoice.footer_text ?: "")
 
-        binding.chkRecurring.isChecked = invoice.is_recurring
-        binding.layoutRecurringOptions.visibility = if (invoice.is_recurring) View.VISIBLE else View.GONE
-
-        if (invoice.is_recurring) {
-            val frequency = invoice.recurring_frequency ?: "monthly"
-            val displayText = frequencyDisplayLabels[frequency] ?: frequency
-            binding.etRecurringFrequency.setText(displayText, false)
-            binding.etRecurringDay.setText((invoice.recurring_day ?: 1).toString())
-            updateSendDayVisibility(frequency)
-            updateNextSendDateInfo()
-        }
-
         if (invoice.status.lowercase() == "draft") {
             binding.btnSendInvoice.visibility = View.VISIBLE
             binding.btnCreateInvoice.visibility = View.GONE
             binding.btnSaveAsDraft.text = "Save Draft"
-            binding.cardDraftWarning.visibility = View.VISIBLE
             supportActionBar?.title = "Edit Draft Invoice"
         } else {
             binding.btnSendInvoice.visibility = View.GONE
             binding.btnCreateInvoice.visibility = View.VISIBLE
             binding.btnSaveAsDraft.text = "Save as Draft"
-            binding.cardDraftWarning.visibility = View.GONE
             supportActionBar?.title = "Edit Invoice"
         }
 
@@ -795,6 +787,8 @@ class CreateInvoiceActivity : BaseActivity() {
         return true
     }
 
+    // ==================== RECURRING INVOICE METHODS ====================
+
     private fun createInvoice() {
         if (!validateInvoice()) return
         val request = getInvoiceRequest()
@@ -803,20 +797,78 @@ class CreateInvoiceActivity : BaseActivity() {
 
     private fun createInvoiceAsDraft() {
         if (!validateInvoice()) return
-        invoiceViewModel.createInvoiceAsDraft(getInvoiceRequest())
+        val request = getInvoiceRequest()
+        invoiceViewModel.createInvoiceAsDraft(request)
     }
 
     private fun updateInvoice() {
         if (!validateInvoice()) return
         editingInvoiceId?.let { id ->
-            invoiceViewModel.updateInvoice(id, getInvoiceRequest())
+            val request = getInvoiceRequest()
+            invoiceViewModel.updateInvoice(id, request)
         }
     }
 
     private fun updateInvoiceAsDraft() {
         if (!validateInvoice()) return
         editingInvoiceId?.let { id ->
-            invoiceViewModel.updateInvoiceAsDraft(id, getInvoiceRequest())
+            val request = getInvoiceRequest()
+            invoiceViewModel.updateInvoiceAsDraft(id, request)
+        }
+    }
+
+    // This function creates the recurring template AFTER the invoice is successfully created
+    private fun createRecurringTemplateSeparately() {
+        lifecycleScope.launch {
+            try {
+                showLoading(true)
+
+                val selectedDisplay = binding.etRecurringFrequency.text.toString()
+                val frequency = frequencies.find { frequencyDisplayLabels[it] == selectedDisplay } ?: "monthly"
+                val dayOfMonth = binding.etRecurringDay.text.toString().toIntOrNull()?.coerceIn(1, 28) ?: 1
+
+                val dueDays = try {
+                    val invDate = dateFormat.parse(binding.etInvoiceDate.text.toString())
+                    val dueDate = dateFormat.parse(binding.etDueDate.text.toString())
+                    if (invDate != null && dueDate != null) {
+                        ((dueDate.time - invDate.time) / (1000 * 60 * 60 * 24)).toInt().coerceAtLeast(1)
+                    } else 30
+                } catch (e: Exception) { 30 }
+
+                val templateName = "Recurring: ${selectedCustomer?.customer_name ?: "Invoice"}"
+
+                val request = RecurringTemplateRequest(
+                    customerId = selectedCustomer!!.id,
+                    templateName = templateName,
+                    invoiceDateDay = dayOfMonth,
+                    dueDateDays = dueDays,
+                    frequency = frequency,
+                    taxType = if (binding.rbTaxInclusive.isChecked) "inclusive" else "exclusive",
+                    items = invoiceItems.toList()
+                )
+
+                val response = RetrofitClient.apiService.createRecurringTemplate(request)
+                showLoading(false)
+
+                if (response.isSuccessful) {
+                    Toast.makeText(this@CreateInvoiceActivity,
+                        "Invoice and recurring template created successfully!",
+                        Toast.LENGTH_LONG).show()
+                    finish()
+                } else {
+                    val err = response.errorBody()?.string() ?: "Failed to create recurring template"
+                    Toast.makeText(this@CreateInvoiceActivity,
+                        "Invoice created but recurring template failed: $err",
+                        Toast.LENGTH_LONG).show()
+                    finish()
+                }
+            } catch (e: Exception) {
+                showLoading(false)
+                Toast.makeText(this@CreateInvoiceActivity,
+                    "Invoice created but template error: ${e.message}",
+                    Toast.LENGTH_LONG).show()
+                finish()
+            }
         }
     }
 
@@ -835,20 +887,13 @@ class CreateInvoiceActivity : BaseActivity() {
         }
     }
 
+    private fun getSelectedFrequency(): String? {
+        if (!binding.chkRecurring.isChecked) return null
+        val selectedDisplay = binding.etRecurringFrequency.text.toString()
+        return frequencies.find { frequencyDisplayLabels[it] == selectedDisplay }
+    }
+
     private fun getInvoiceRequest(): InvoiceRequest {
-        var recurringFrequency: String? = null
-        var recurringDay: Int? = null
-
-        if (binding.chkRecurring.isChecked) {
-            val selectedDisplay = binding.etRecurringFrequency.text.toString()
-            recurringFrequency = frequencies.find { frequencyDisplayLabels[it] == selectedDisplay } ?: "monthly"
-            recurringDay = if (recurringFrequency == "monthly") {
-                binding.etRecurringDay.text.toString().toIntOrNull()?.coerceIn(1, 28) ?: 1
-            } else {
-                null
-            }
-        }
-
         return InvoiceRequest(
             customer_id = selectedCustomer!!.id,
             invoice_date = binding.etInvoiceDate.text.toString(),
@@ -861,10 +906,6 @@ class CreateInvoiceActivity : BaseActivity() {
             notes = binding.etNotes.text.toString().trim().ifEmpty { null },
             terms_conditions = binding.etTermsConditions.text.toString().trim().ifEmpty { null },
             footer_text = binding.etFooterText.text.toString().trim().ifEmpty { null },
-            is_recurring = binding.chkRecurring.isChecked,
-            recurring_frequency = recurringFrequency,
-            recurring_day = recurringDay,
-            recurring_active = binding.chkRecurring.isChecked,
             items = invoiceItems.toList(),
             status = null,
             tax_type = if (binding.rbTaxInclusive.isChecked) "inclusive" else "exclusive"

@@ -15,7 +15,9 @@ data class DashboardStats(
     val paid_amount: Double = 0.0,
     val overdue_count: Int = 0,
     val overdue_amount: Double = 0.0,
-    val pending_count: Int = 0
+    val pending_count: Int = 0,
+    val recurring_count: Int = 0,
+    val recurring_total_amount: Double = 0.0
 )
 
 data class RecentInvoice(

@@ -15,6 +15,12 @@
         app:showAsAction="never" />
 
     <item
+        android:id="@+id/menu_recurring_invoices"
+        android:title="Recurring Invoices"
+        android:icon="@drawable/ic_recurring"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/menu_communications"
         android:title="@string/menu_communications"
         android:icon="@android:drawable/ic_menu_send"

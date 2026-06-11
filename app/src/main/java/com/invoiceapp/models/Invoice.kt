@@ -23,11 +23,7 @@ data class Invoice(
     val notes: String? = null,
     val terms_conditions: String? = null,
     val footer_text: String? = null,
-    val is_recurring: Boolean = false,
-    val recurring_frequency: String? = null,
-    val recurring_day: Int? = null,
-    val recurring_next_send_date: String? = null,
-    val recurring_active: Boolean = true,
+    val payment_method: String? = null,
     val items: List<InvoiceItem>? = null,
     val payments: List<Payment>? = null,
     @SerializedName("tax_rate")
@@ -57,10 +53,6 @@ data class InvoiceRequest(
     val notes: String? = null,
     val terms_conditions: String? = null,
     val footer_text: String? = null,
-    val is_recurring: Boolean = false,
-    val recurring_frequency: String? = null,
-    val recurring_day: Int? = null,
-    val recurring_active: Boolean = true,
     val items: List<InvoiceItemRequest>,
     val status: String? = null,
     val tax_type: String = "exclusive"

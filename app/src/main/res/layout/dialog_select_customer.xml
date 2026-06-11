@@ -4,43 +4,34 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:paddingStart="4dp"
-    android:paddingEnd="4dp"
-    android:paddingTop="8dp">
+    android:padding="16dp">
 
     <com.google.android.material.textfield.TextInputLayout
-        android:id="@+id/layoutCustomerSearch"
-        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Search by name, email, or phone"
-        app:endIconMode="clear_text"
-        app:startIconDrawable="@drawable/ic_search">
+        android:hint="Search Customer"
+        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/etCustomerSearch"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:imeOptions="actionSearch"
-            android:inputType="text"
-            android:maxLines="1" />
+            android:inputType="text" />
     </com.google.android.material.textfield.TextInputLayout>
 
     <TextView
         android:id="@+id/tvCustomerEmpty"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center"
-        android:padding="24dp"
-        android:text="No matching customers"
-        android:textColor="?attr/colorTextSecondary"
+        android:layout_marginTop="16dp"
+        android:text="No customers found"
+        android:textAlignment="center"
         android:visibility="gone" />
 
     <ListView
         android:id="@+id/listCustomers"
         android:layout_width="match_parent"
-        android:layout_height="360dp"
-        android:layout_marginTop="8dp"
-        android:divider="?attr/colorBorderSoft"
-        android:dividerHeight="1dp" />
+        android:layout_height="300dp"
+        android:layout_marginTop="8dp" />
+
 </LinearLayout>

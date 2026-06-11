@@ -23,6 +23,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.invoiceapp.R
 import com.invoiceapp.activities.CreateInvoiceActivity
+import com.invoiceapp.activities.MainActivity
 import com.invoiceapp.adapters.InvoiceAdapter
 import com.invoiceapp.databinding.FragmentInvoicesBinding
 import com.invoiceapp.models.Invoice
@@ -220,11 +221,12 @@ class InvoicesFragment : Fragment() {
     }
 
     private fun setupFAB() {
-        val fab = requireActivity().findViewById<FloatingActionButton>(com.invoiceapp.R.id.fab)
-        fab?.setOnClickListener {
+        val activity = activity ?: return
+        val fab = activity.findViewById<FloatingActionButton>(com.invoiceapp.R.id.fab) ?: return
+        fab.setOnClickListener {
             startActivity(Intent(requireContext(), CreateInvoiceActivity::class.java))
         }
-        fab?.show()
+        fab.show()
     }
 
     private fun observeViewModel() {
