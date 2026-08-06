@@ -1,7 +1,6 @@
 package com.invoiceapp.utils
 
 import android.content.Context
-import android.content.SharedPreferences
 import com.invoiceapp.models.TemplateInfo
 
 object InvoiceTemplateManager {

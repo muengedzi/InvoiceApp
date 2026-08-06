@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginBottom="8dp"
@@ -30,7 +31,8 @@
                     android:layout_height="wrap_content"
                     android:text="INV-001"
                     android:textSize="14sp"
-                    android:textStyle="bold" />
+                    android:textStyle="bold"
+                    android:textColor="?attr/colorOnSurface" />
 
                 <TextView
                     android:id="@+id/tvCustomerName"
@@ -38,7 +40,7 @@
                     android:layout_height="wrap_content"
                     android:text="Customer Name"
                     android:textSize="12sp"
-                    android:textColor="@android:color/darker_gray" />
+                    android:textColor="?attr/colorTextSecondary" />
 
                 <TextView
                     android:id="@+id/tvDueDate"
@@ -46,7 +48,7 @@
                     android:layout_height="wrap_content"
                     android:text="Due: Jan 01, 2024"
                     android:textSize="11sp"
-                    android:textColor="@android:color/darker_gray" />
+                    android:textColor="?attr/colorTextSecondary" />
 
             </LinearLayout>
 
@@ -63,7 +65,7 @@
                     android:text="R0.00"
                     android:textSize="14sp"
                     android:textStyle="bold"
-                    android:textColor="#F44336" />
+                    tools:text="R 1,250.00" />
 
                 <TextView
                     android:id="@+id/tvStatus"

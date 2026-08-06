@@ -15,10 +15,13 @@ import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.BarData
 import com.github.mikephil.charting.data.BarDataSet
 import com.github.mikephil.charting.data.BarEntry
+import com.github.mikephil.charting.data.PieData
+import com.github.mikephil.charting.data.PieDataSet
+import com.github.mikephil.charting.data.PieEntry
 import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
+import com.github.mikephil.charting.formatter.PercentFormatter
 import com.github.mikephil.charting.formatter.ValueFormatter
 import com.google.android.material.color.MaterialColors
-import com.invoiceapp.R
 import com.invoiceapp.adapters.ReportDetailAdapter
 import com.invoiceapp.databinding.FragmentReportsBinding
 import com.invoiceapp.network.RetrofitClient
@@ -184,6 +187,17 @@ class ReportsFragment : Fragment() {
             axisLeft.isEnabled = true
             axisLeft.textSize = 10f
             axisRight.isEnabled = false
+        }
+
+        binding.pieChart.apply {
+            description.isEnabled = false
+            setUsePercentValues(true)
+            isDrawHoleEnabled = true
+            setHoleRadius(42f)
+            setTransparentCircleRadius(48f)
+            setEntryLabelTextSize(11f)
+            legend.isEnabled = true
+            legend.textSize = 11f
         }
     }
 
@@ -407,6 +421,12 @@ class ReportsFragment : Fragment() {
             updateChart(entries, labels, "Expenses")
         }
 
+        updatePieChart(
+            dataList.map { (it["amount"] as? Number)?.toFloat() ?: 0f },
+            dataList.map { it["category"] as? String ?: "Uncategorized" },
+            "Expenses by Category"
+        )
+
         reportDetailAdapter.submitList(dataList)
     }
 
@@ -447,6 +467,14 @@ class ReportsFragment : Fragment() {
             updateChart(entries, labels, "Monthly Revenue")
         }
 
+        updatePieChart(
+            listOf(totalRevenue.toFloat(), totalExpenses.toFloat()).filter { it > 0f },
+            listOf("Revenue", "Expenses").filterIndexed { index, _ ->
+                listOf(totalRevenue.toFloat(), totalExpenses.toFloat())[index] > 0f
+            },
+            "Revenue vs Expenses"
+        )
+
         reportDetailAdapter.submitList(revenueByMonth)
     }
 
@@ -480,6 +508,12 @@ class ReportsFragment : Fragment() {
             updateChart(entries, labels, "Tax Liability")
         }
 
+        updatePieChart(
+            taxRates.map { ((it["tax_collected"] ?: it["tax_liability"]) as? Number)?.toFloat() ?: 0f },
+            taxRates.map { "${it["tax_rate"]}%" },
+            "Tax by Rate"
+        )
+
         reportDetailAdapter.submitList(taxByMonth.takeIf { it.isNotEmpty() } ?: taxRates)
     }
 
@@ -493,6 +527,14 @@ class ReportsFragment : Fragment() {
         binding.tvReportTotalRevenue.setTextColor(android.graphics.Color.parseColor("#F44336"))
         binding.tvReportNetProfit.text = currencyFormat.format(totalOutstanding)
         binding.tvReportNetProfit.setTextColor(android.graphics.Color.parseColor("#F44336"))
+
+        updatePieChart(
+            outstandingInvoices.take(8).map { (it["balance_due"] as? Number)?.toFloat() ?: 0f },
+            outstandingInvoices.take(8).map {
+                (it["customer_name"] as? String) ?: (it["invoice_number"] as? String) ?: "Invoice"
+            },
+            "Outstanding by Customer"
+        )
 
         reportDetailAdapter.submitList(outstandingInvoices)
     }
@@ -517,6 +559,12 @@ class ReportsFragment : Fragment() {
             updateCountChart(entries, labels, if (monthlyStatus.isNotEmpty()) "Invoices Created by Month" else "Invoices by Status")
         }
 
+        updatePieChart(
+            statusBreakdown.map { (it["count"] as? Number)?.toFloat() ?: 0f },
+            statusBreakdown.map { it["status"] as? String ?: "Unknown" },
+            "Invoice Status Split"
+        )
+
         reportDetailAdapter.submitList(monthlyStatus.takeIf { it.isNotEmpty() } ?: statusBreakdown)
     }
 
@@ -539,6 +587,12 @@ class ReportsFragment : Fragment() {
             updateChart(entries, labels, "Top Selling Items")
         }
 
+        updatePieChart(
+            items.take(8).map { (it["total_sales"] as? Number)?.toFloat() ?: 0f },
+            items.take(8).map { it["item_name"] as? String ?: "Item" },
+            "Top Items Share"
+        )
+
         reportDetailAdapter.submitList(items)
     }
 
@@ -560,6 +614,12 @@ class ReportsFragment : Fragment() {
         if (entries.isNotEmpty()) {
             updateChart(entries, labels, "Top Customers by Spending")
         }
+
+        updatePieChart(
+            customers.take(8).map { (it["total_spent"] as? Number)?.toFloat() ?: 0f },
+            customers.take(8).map { it["customer_name"] as? String ?: "Customer" },
+            "Customer Revenue Share"
+        )
 
         reportDetailAdapter.submitList(customers)
     }
@@ -606,6 +666,47 @@ class ReportsFragment : Fragment() {
         binding.barChart.invalidate()
     }
 
+    private fun updatePieChart(values: List<Float>, labels: List<String>, title: String) {
+        val entries = values.zip(labels)
+            .filter { it.first > 0f }
+            .map { PieEntry(it.first, it.second.take(18)) }
+
+        if (entries.isEmpty()) {
+            binding.cardPieChart.visibility = View.GONE
+            binding.tvPieChartTitle.visibility = View.GONE
+            binding.pieChart.clear()
+            return
+        }
+
+        val colors = listOf(
+            android.graphics.Color.parseColor("#4CAF50"),
+            android.graphics.Color.parseColor("#2196F3"),
+            android.graphics.Color.parseColor("#FF9800"),
+            android.graphics.Color.parseColor("#9C27B0"),
+            android.graphics.Color.parseColor("#F44336"),
+            android.graphics.Color.parseColor("#00ACC1"),
+            android.graphics.Color.parseColor("#607D8B"),
+            android.graphics.Color.parseColor("#795548")
+        )
+
+        val dataSet = PieDataSet(entries, title).apply {
+            this.colors = colors
+            valueTextSize = 11f
+            valueFormatter = PercentFormatter(binding.pieChart)
+            sliceSpace = 2f
+            setDrawValues(true)
+        }
+
+        binding.tvPieChartTitle.text = title
+        binding.tvPieChartTitle.visibility = View.VISIBLE
+        binding.cardPieChart.visibility = View.VISIBLE
+        binding.pieChart.data = PieData(dataSet)
+        binding.pieChart.centerText = title
+        binding.pieChart.setCenterTextSize(12f)
+        binding.pieChart.animateY(700)
+        binding.pieChart.invalidate()
+    }
+
     private fun formatMonthLabel(item: Map<String, Any>): String {
         val year = (item["year"] as? Number)?.toInt()
         val month = (item["month"] as? Number)?.toInt()
@@ -632,6 +733,9 @@ class ReportsFragment : Fragment() {
         reportDetailAdapter.submitList(emptyList())
         binding.barChart.clear()
         binding.barChart.invalidate()
+        binding.pieChart.clear()
+        binding.cardPieChart.visibility = View.GONE
+        binding.tvPieChartTitle.visibility = View.GONE
     }
 
     private fun showLoading(show: Boolean) {

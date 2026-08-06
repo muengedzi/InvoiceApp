@@ -23,7 +23,6 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.invoiceapp.R
 import com.invoiceapp.activities.CreateInvoiceActivity
-import com.invoiceapp.activities.MainActivity
 import com.invoiceapp.adapters.InvoiceAdapter
 import com.invoiceapp.databinding.FragmentInvoicesBinding
 import com.invoiceapp.models.Invoice

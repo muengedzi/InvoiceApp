@@ -5,7 +5,6 @@ import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import com.invoiceapp.databinding.ItemRecurringTemplateBinding
 import com.invoiceapp.models.RecurringTemplate
-import com.invoiceapp.models.RecurringTemplateItem
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.*

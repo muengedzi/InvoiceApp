@@ -2,9 +2,6 @@ package com.invoiceapp.utils
 
 import android.content.Context
 import android.graphics.*
-import android.graphics.drawable.BitmapDrawable
-import android.graphics.drawable.Drawable
-import com.invoiceapp.R
 import java.io.File
 import java.io.FileOutputStream
 

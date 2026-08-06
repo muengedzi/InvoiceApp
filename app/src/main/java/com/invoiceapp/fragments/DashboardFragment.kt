@@ -1,7 +1,6 @@
 package com.invoiceapp.fragments
 
 import android.os.Bundle
-import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -47,6 +46,10 @@ class DashboardFragment : Fragment() {
 
     private fun setupClickListeners() {
         binding.cardPaidInvoices.setOnClickListener {
+            (requireActivity() as? MainActivity)?.navigateToInvoices("paid")
+        }
+
+        binding.cardPaidLast30Days.setOnClickListener {
             (requireActivity() as? MainActivity)?.navigateToInvoices("paid")
         }
 
@@ -114,6 +117,10 @@ class DashboardFragment : Fragment() {
         binding.tvStatValue.text = formatCurrency(stats.paid_amount)
         binding.tvStatSubtext.text = "${stats.paid_count} paid invoice(s)"
         binding.tvStatLabel.text = "Paid Invoices"
+
+        binding.tvStatValuePaidRecent.text = formatCurrency(stats.paid_last_30_days_amount)
+        binding.tvStatSubtextPaidRecent.text = "${stats.paid_last_30_days_count} paid invoice(s)"
+        binding.tvStatLabelPaidRecent.text = "Paid Last 30 Days"
 
         // Card 2: Pending - Main: Amount, Subtext: Count
         binding.tvStatValuePending.text = formatCurrency(stats.pending_amount)

@@ -2,7 +2,9 @@ package com.invoiceapp.adapters
 
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
+import com.invoiceapp.R
 import com.invoiceapp.databinding.ItemPendingFollowUpBinding
 import com.invoiceapp.models.InvoiceFollowUp
 import java.text.NumberFormat
@@ -45,10 +47,11 @@ class PendingFollowUpAdapter(
             binding.tvInvoiceNumber.text = item.invoiceNumber ?: "N/A"
             binding.tvCustomerName.text = item.customerName ?: "N/A"
 
-            // Now balanceDue is available in the model
+            // Format and display balance due amount
             val balance = item.balanceDue ?: 0.0
             binding.tvBalanceDue.text = currencyFormat.format(balance)
 
+            // Format and display due date
             val dueDate = try {
                 dateFormat.format(SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(item.followUpDate))
             } catch (e: Exception) {
@@ -56,16 +59,37 @@ class PendingFollowUpAdapter(
             }
             binding.tvDueDate.text = dueDate
 
-            // Now daysOverdue is available in the model
+            // Get days overdue
             val daysOverdue = item.daysOverdue ?: 0
 
-            when {
-                daysOverdue > 30 -> binding.tvStatus.text = "Critical"
-                daysOverdue > 14 -> binding.tvStatus.text = "Urgent"
-                daysOverdue > 7 -> binding.tvStatus.text = "Overdue"
-                else -> binding.tvStatus.text = "Pending"
+            // Set amount color based on days overdue (red for any overdue, orange for pending)
+            if (daysOverdue > 0) {
+                // Overdue - Red color for amount
+                binding.tvBalanceDue.setTextColor(
+                    ContextCompat.getColor(binding.root.context, R.color.error)
+                )
+                // Set status text based on severity
+                when {
+                    daysOverdue > 30 -> binding.tvStatus.text = "Critical"
+                    daysOverdue > 14 -> binding.tvStatus.text = "Urgent"
+                    daysOverdue > 7 -> binding.tvStatus.text = "Overdue"
+                    else -> binding.tvStatus.text = "Overdue"
+                }
+                binding.tvStatus.setTextColor(
+                    ContextCompat.getColor(binding.root.context, R.color.error)
+                )
+            } else {
+                // Pending (not overdue yet) - Orange color for amount (matching dashboard)
+                binding.tvBalanceDue.setTextColor(
+                    ContextCompat.getColor(binding.root.context, R.color.warning)
+                )
+                binding.tvStatus.text = "Pending"
+                binding.tvStatus.setTextColor(
+                    ContextCompat.getColor(binding.root.context, R.color.warning)
+                )
             }
 
+            // Set click listeners
             binding.root.setOnClickListener {
                 onItemClick(item)
             }

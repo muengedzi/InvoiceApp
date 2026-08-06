@@ -13,6 +13,8 @@ data class DashboardStats(
     // New fields for counts
     val paid_count: Int = 0,
     val paid_amount: Double = 0.0,
+    val paid_last_30_days_count: Int = 0,
+    val paid_last_30_days_amount: Double = 0.0,
     val overdue_count: Int = 0,
     val overdue_amount: Double = 0.0,
     val pending_count: Int = 0,

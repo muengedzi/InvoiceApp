@@ -2,21 +2,17 @@ package com.invoiceapp.activities
 
 import android.app.DatePickerDialog
 import android.animation.ObjectAnimator
-import android.animation.ValueAnimator
 import android.content.Intent
 import android.text.Editable
 import android.text.TextWatcher
 import android.os.Bundle
-import android.util.Log
 import android.view.View
-import android.view.animation.LinearInterpolator
 import android.widget.ArrayAdapter
 import android.widget.AutoCompleteTextView
 import android.widget.ListView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.invoiceapp.R

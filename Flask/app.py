@@ -114,7 +114,7 @@ IMAP_PORT = int(os.getenv("IMAP_PORT", "993"))
 INBOUND_WEBHOOK_SECRET = os.getenv("INBOUND_WEBHOOK_SECRET", "")
 
 # ============================================
-# DATABASE HELPER FUNCTIONS
+# DATABASE ERROR HELPER
 # ============================================
 
 def database_unavailable_response(error):
@@ -123,115 +123,9 @@ def database_unavailable_response(error):
         "error": "Database is unavailable. Please make sure SQL Server (SQLEXPRESS) is running and try again."
     }), 503
 
-def ensure_customer_company_columns(cursor):
-    cursor.execute("""
-        IF COL_LENGTH('dbo.customers', 'is_company') IS NULL
-            ALTER TABLE dbo.customers ADD is_company BIT NOT NULL CONSTRAINT DF_customers_is_company DEFAULT 0
-        IF COL_LENGTH('dbo.customers', 'company_registration_number') IS NULL
-            ALTER TABLE dbo.customers ADD company_registration_number NVARCHAR(100) NULL
-        IF COL_LENGTH('dbo.customers', 'vat_registered') IS NULL
-            ALTER TABLE dbo.customers ADD vat_registered BIT NOT NULL CONSTRAINT DF_customers_vat_registered DEFAULT 0
-        IF COL_LENGTH('dbo.customers', 'vat_number') IS NULL
-            ALTER TABLE dbo.customers ADD vat_number NVARCHAR(100) NULL
-        IF COL_LENGTH('dbo.customers', 'company_address') IS NULL
-            ALTER TABLE dbo.customers ADD company_address NVARCHAR(500) NULL
-    """)
-
-def ensure_company_settings_columns(cursor):
-    cursor.execute("""
-        IF COL_LENGTH('dbo.company_settings', 'company_vat_number') IS NULL
-            ALTER TABLE dbo.company_settings ADD company_vat_number NVARCHAR(100) NULL
-
-        IF COL_LENGTH('dbo.company_settings', 'invoice_notes_default') IS NULL
-            ALTER TABLE dbo.company_settings ADD invoice_notes_default NVARCHAR(MAX) NULL
-
-        IF COL_LENGTH('dbo.company_settings', 'terms_conditions_default') IS NULL
-            ALTER TABLE dbo.company_settings ADD terms_conditions_default NVARCHAR(MAX) NULL
-
-        IF COL_LENGTH('dbo.company_settings', 'footer_text_default') IS NULL
-            ALTER TABLE dbo.company_settings ADD footer_text_default NVARCHAR(MAX) NULL
-
-        IF COL_LENGTH('dbo.company_settings', 'payment_terms_default') IS NULL
-            ALTER TABLE dbo.company_settings ADD payment_terms_default NVARCHAR(MAX) NULL
-
-        IF COL_LENGTH('dbo.company_settings', 'bank_account_details') IS NULL
-            ALTER TABLE dbo.company_settings ADD bank_account_details NVARCHAR(MAX) NULL
-    """)
-
-def ensure_invoice_operational_columns(cursor):
-    cursor.execute("""
-        IF COL_LENGTH('dbo.invoices', 'payment_method') IS NULL
-            ALTER TABLE dbo.invoices ADD payment_method NVARCHAR(100) NULL
-
-        IF COL_LENGTH('dbo.invoices', 'recurring_template_id') IS NULL
-            ALTER TABLE dbo.invoices ADD recurring_template_id INT NULL
-
-        IF COL_LENGTH('dbo.invoices', 'is_generated_from_recurring') IS NULL
-            ALTER TABLE dbo.invoices ADD is_generated_from_recurring BIT NOT NULL CONSTRAINT DF_invoices_generated_from_recurring DEFAULT 0
-
-        IF COL_LENGTH('dbo.invoices', 'tax_type') IS NULL
-            ALTER TABLE dbo.invoices ADD tax_type NVARCHAR(20) NOT NULL DEFAULT 'inclusive'
-    """)
-
-def ensure_recurring_tables(cursor):
-    """Create recurring invoice template tables if they don't exist"""
-    cursor.execute("""
-        IF OBJECT_ID('dbo.recurring_invoice_templates', 'U') IS NULL
-        BEGIN
-            CREATE TABLE dbo.recurring_invoice_templates (
-                id INT IDENTITY(1,1) PRIMARY KEY,
-                user_id INT NOT NULL,
-                customer_id INT NOT NULL,
-                template_name NVARCHAR(200) NOT NULL,
-                invoice_date_day INT NOT NULL,
-                due_date_days INT NOT NULL,
-                frequency NVARCHAR(20) NOT NULL,
-                status NVARCHAR(20) NOT NULL DEFAULT 'active',
-                tax_type NVARCHAR(20) NOT NULL DEFAULT 'inclusive',
-                created_at DATETIME NOT NULL DEFAULT GETDATE(),
-                updated_at DATETIME NOT NULL DEFAULT GETDATE(),
-                FOREIGN KEY (user_id) REFERENCES users(id),
-                FOREIGN KEY (customer_id) REFERENCES customers(id)
-            )
-        END
-    """)
-    
-    cursor.execute("""
-        IF OBJECT_ID('dbo.recurring_invoice_template_items', 'U') IS NULL
-        BEGIN
-            CREATE TABLE dbo.recurring_invoice_template_items (
-                id INT IDENTITY(1,1) PRIMARY KEY,
-                template_id INT NOT NULL,
-                item_name NVARCHAR(200) NOT NULL,
-                description NVARCHAR(MAX) NULL,
-                quantity DECIMAL(18,2) NOT NULL DEFAULT 1,
-                unit_price DECIMAL(18,2) NOT NULL DEFAULT 0,
-                discount_amount DECIMAL(18,2) NOT NULL DEFAULT 0,
-                tax_rate DECIMAL(5,2) NOT NULL DEFAULT 0,
-                sort_order INT NOT NULL DEFAULT 0,
-                FOREIGN KEY (template_id) REFERENCES recurring_invoice_templates(id) ON DELETE CASCADE
-            )
-        END
-    """)
-
-def ensure_email_sync_table(cursor):
-    cursor.execute("""
-        IF OBJECT_ID('dbo.email_sync_log', 'U') IS NULL
-        BEGIN
-            CREATE TABLE dbo.email_sync_log (
-                id INT IDENTITY(1,1) PRIMARY KEY,
-                user_id INT NOT NULL,
-                message_id NVARCHAR(300) NOT NULL,
-                invoice_id INT NULL,
-                communication_id INT NULL,
-                sender_email NVARCHAR(510) NULL,
-                subject NVARCHAR(1000) NULL,
-                received_at DATETIME NULL,
-                processed_at DATETIME NOT NULL DEFAULT GETDATE(),
-                CONSTRAINT UQ_email_sync_log_user_message UNIQUE (user_id, message_id)
-            )
-        END
-    """)
+# ============================================
+# RECURRING HELPER FUNCTIONS
+# ============================================
 
 def calculate_recurring_next_send_date(frequency, recurring_day=None):
     """Calculate next send date for a recurring invoice"""
@@ -267,6 +161,44 @@ def calculate_recurring_next_send_date(frequency, recurring_day=None):
         day = min(target_day, month_calendar.monthrange(year, month)[1])
         next_date = datetime(year, month, day).date()
     return next_date
+
+def add_months(source_date, months, day_of_month):
+    month = source_date.month + months
+    year = source_date.year + (month - 1) // 12
+    month = ((month - 1) % 12) + 1
+    day = min(max(day_of_month or source_date.day, 1), month_calendar.monthrange(year, month)[1], 28)
+    return datetime(year, month, day).date()
+
+def latest_due_date_for_template(frequency, invoice_date_day, created_at, today):
+    created_date = created_at.date() if hasattr(created_at, 'date') else today
+    frequency = (frequency or 'monthly').lower()
+    invoice_date_day = min(max(int(invoice_date_day or created_date.day), 1), 28)
+
+    if frequency in ('weekly', 'biweekly'):
+        interval_days = 14 if frequency == 'biweekly' else 7
+        due_date = created_date
+        while due_date + timedelta(days=interval_days) <= today:
+            due_date += timedelta(days=interval_days)
+        return due_date if due_date <= today else None
+
+    month_intervals = {
+        'monthly': 1,
+        'bimonthly': 2,
+        'quarterly': 3,
+        'yearly': 12
+    }
+    interval_months = month_intervals.get(frequency, 1)
+
+    due_date = datetime(created_date.year, created_date.month, invoice_date_day).date()
+    if due_date < created_date:
+        due_date = add_months(due_date, interval_months, invoice_date_day)
+
+    latest_due_date = None
+    while due_date <= today:
+        latest_due_date = due_date
+        due_date = add_months(due_date, interval_months, invoice_date_day)
+
+    return latest_due_date
 
 # ============================================
 # FLASK-LOGIN SETUP
@@ -725,8 +657,6 @@ def login_page():
 def get_recurring_templates():
     conn = get_db_connection()
     cursor = conn.cursor()
-    ensure_recurring_tables(cursor)
-    conn.commit()
     
     cursor.execute("""
         SELECT 
@@ -745,7 +675,6 @@ def get_recurring_templates():
         tax_type = row[11] or "inclusive"
         is_inclusive = tax_type == "inclusive"
         
-        # Get items for this template to calculate total amount
         cursor.execute("""
             SELECT item_name, description, quantity, unit_price, discount_amount, tax_rate
             FROM recurring_invoice_template_items
@@ -758,7 +687,6 @@ def get_recurring_templates():
         total_tax_amount = 0.0
         
         for item_row in cursor.fetchall():
-            # Index positions based on SELECT order
             item_name = item_row[0]
             description = item_row[1] or ""
             quantity = float(item_row[2]) if item_row[2] else 1
@@ -789,7 +717,6 @@ def get_recurring_templates():
                 "total_amount": item_amount if is_inclusive else item_amount + item_tax
             })
         
-        # Calculate total amount for the template
         total_amount = subtotal if is_inclusive else subtotal + total_tax_amount
         
         templates.append({
@@ -817,8 +744,6 @@ def get_recurring_templates():
 def get_recurring_template(template_id):
     conn = get_db_connection()
     cursor = conn.cursor()
-    ensure_recurring_tables(cursor)
-    conn.commit()
     
     cursor.execute("""
         SELECT 
@@ -890,8 +815,6 @@ def create_recurring_template():
     
     conn = get_db_connection()
     cursor = conn.cursor()
-    ensure_recurring_tables(cursor)
-    conn.commit()
     
     try:
         cursor.execute("""
@@ -985,8 +908,6 @@ def update_recurring_template_status(template_id):
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    ensure_recurring_tables(cursor)
-    conn.commit()
 
     cursor.execute("""
         UPDATE recurring_invoice_templates
@@ -1097,174 +1018,12 @@ def generate_invoice_from_template(template_id):
 
     return response, status_code
 
-def create_invoice_internal(data, status='pending'):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    ensure_customer_company_columns(cursor)
-    ensure_company_settings_columns(cursor)
-    conn.commit()
-    
-    if status == 'quotation' or status == 'quote':
-        cursor.execute("""
-            SELECT ISNULL(MAX(CAST(REPLACE(invoice_number, 'QTN-', '') AS INT)), 0)
-            FROM invoices 
-            WHERE user_id = ? 
-            AND invoice_number LIKE 'QTN-%'
-        """, (current_user.id,))
-        max_num = cursor.fetchone()[0] or 0
-        next_num = max_num + 1
-        invoice_number = f"QTN-{next_num:06d}"
-    else:
-        cursor.execute("""
-            SELECT ISNULL(MAX(CAST(REPLACE(invoice_number, 'INV-', '') AS INT)), 0)
-            FROM invoices 
-            WHERE user_id = ? 
-            AND invoice_number LIKE 'INV-%'
-        """, (current_user.id,))
-        max_num = cursor.fetchone()[0] or 0
-        next_num = max_num + 1
-        invoice_number = f"INV-{next_num:06d}"
-    
-    subtotal = 0
-    total_tax_amount = 0
-    items_data = []
-    tax_type = data.get('tax_type', 'inclusive')
-    is_inclusive = tax_type == 'inclusive'
-
-    for item in data['items']:
-        quantity = float(item.get('quantity', 1))
-        unit_price = float(item.get('unit_price', 0))
-        discount = float(item.get('discount_amount', 0))
-        item_tax_rate = float(item.get('tax_rate', 0))
-
-        item_amount = (quantity * unit_price) - discount
-
-        item_tax = 0
-        if is_inclusive:
-            item_tax = item_amount - (item_amount / (1 + (item_tax_rate / 100)))
-            subtotal += (item_amount - item_tax)
-        else:
-            item_tax = item_amount * (item_tax_rate / 100)
-            subtotal += item_amount
-
-        total_tax_amount += item_tax
-        
-        items_data.append({
-            'item_name': item['item_name'],
-            'description': item.get('description', ''),
-            'quantity': quantity,
-            'unit_price': unit_price,
-            'discount_amount': discount,
-            'tax_rate': item_tax_rate,
-            'tax_amount': item_tax,
-            'total_amount': item_amount if is_inclusive else item_amount + item_tax
-        })
-    
-    tax_rate = float(data.get('tax_rate', 0))
-    discount_amount = float(data.get('discount_amount', 0))
-    shipping_fee = float(data.get('shipping_fee', 0))
-
-    gross_total = subtotal + total_tax_amount
-    total_amount = gross_total - discount_amount + shipping_fee
-
-    invoice_status = data.get('status') or status
-    invoice_status = invoice_status.lower() if invoice_status else 'pending'
-    balance_due = total_amount if invoice_status in ['quotation', 'quote'] else total_amount
-    
-    due_date = data.get('due_date') if invoice_status not in ['quotation', 'quote'] else None
-
-    # Get recurring template ID if this invoice is created from a template
-    recurring_template_id = data.get('recurring_template_id')
-    is_generated_from_recurring = 1 if data.get('is_generated_from_recurring') else 0
-    
-    # Check if we should create a recurring template from this invoice
-    should_create_recurring_template = data.get('should_create_recurring_template', False)
-
-    try:
-        # Insert invoice WITHOUT any recurring columns (just tracking columns)
-        cursor.execute("""
-            INSERT INTO invoices (
-                user_id, customer_id, invoice_number, invoice_date, due_date,
-                po_number, subtotal, tax_rate, tax_amount, discount_amount, 
-                shipping_fee, total_amount, amount_paid, balance_due, notes, status,
-                payment_terms, terms_conditions, footer_text, tax_type,
-                recurring_template_id, is_generated_from_recurring, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())
-        """, (
-            current_user.id,
-            data['customer_id'],
-            invoice_number,
-            data['invoice_date'],
-            due_date,
-            data.get('po_number', ''),
-            subtotal,
-            tax_rate,
-            total_tax_amount,
-            discount_amount,
-            shipping_fee,
-            total_amount,
-            balance_due,
-            data.get('notes', ''),
-            invoice_status,
-            data.get('payment_terms', ''),
-            data.get('terms_conditions', ''),
-            data.get('footer_text', ''),
-            tax_type,
-            recurring_template_id,
-            is_generated_from_recurring
-        ))
-        
-        invoice_id = cursor.execute("SELECT @@IDENTITY").fetchone()[0]
-        
-        for item in items_data:
-            cursor.execute("""
-                INSERT INTO invoice_items (
-                    invoice_id, item_name, description, quantity, unit_price,
-                    discount_amount, tax_rate, tax_amount, total_amount
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                invoice_id,
-                item['item_name'],
-                item['description'],
-                item['quantity'],
-                item['unit_price'],
-                item['discount_amount'],
-                item['tax_rate'],
-                item['tax_amount'],
-                item['total_amount']
-            ))
-        
-        conn.commit()
-        
-        # If this invoice should create a recurring template, create it in recurring_invoice_templates
-        if should_create_recurring_template and not is_generated_from_recurring:
-            print(f"DEBUG: Creating recurring template for invoice {invoice_id}")
-            create_recurring_template_from_invoice(invoice_id, data, current_user.id)
-        
-        return jsonify({
-            "success": True,
-            "invoice_id": invoice_id,
-            "invoice_number": invoice_number,
-            "message": f"{'Quotation' if invoice_status in ['quotation', 'quote'] else 'Invoice'} created successfully"
-        }), 201
-        
-    except Exception as e:
-        conn.rollback()
-        print(f"ERROR: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
-    finally:
-        conn.close()
-
 def create_recurring_template_from_invoice(invoice_id, invoice_data, user_id):
     """Create a recurring template based on an invoice"""
     print(f"DEBUG: Creating recurring template from invoice {invoice_id}")
     
     conn = get_db_connection()
     cursor = conn.cursor()
-    ensure_recurring_tables(cursor)
-    conn.commit()
     
     try:
         # Get invoice details
@@ -1395,32 +1154,27 @@ def calculate_next_template_send_date(frequency, day_of_month=None):
     day_of_month = min(max(day_of_month or today.day, 1), 28)
     
     if frequency == 'weekly':
-        # Next Monday
         days_ahead = 0 - today.weekday()
         if days_ahead <= 0:
             days_ahead += 7
         return today + timedelta(days=days_ahead)
     
     elif frequency == 'biweekly':
-        # Every other week from next Monday
         days_ahead = 0 - today.weekday()
         if days_ahead <= 0:
             days_ahead += 7
         return today + timedelta(days=days_ahead)
     
     elif frequency == 'monthly':
-        # Specific day of month
         if today.day <= day_of_month:
             return today.replace(day=day_of_month)
         else:
-            # Next month
             if today.month == 12:
                 return today.replace(year=today.year + 1, month=1, day=day_of_month)
             else:
                 return today.replace(month=today.month + 1, day=day_of_month)
     
     elif frequency == 'bimonthly':
-        # Every 2 months
         month = today.month + 2
         year = today.year
         if month > 12:
@@ -1430,7 +1184,6 @@ def calculate_next_template_send_date(frequency, day_of_month=None):
         return datetime(year, month, day).date()
     
     elif frequency == 'quarterly':
-        # Every 3 months
         month = today.month + 3
         year = today.year
         if month > 12:
@@ -1445,17 +1198,14 @@ def calculate_next_template_send_date(frequency, day_of_month=None):
     return today + timedelta(days=30)
 
 def process_due_recurring_templates():
-    """Check all active templates and generate invoices if due"""
+    """Check active recurring templates and generate any due invoices."""
     today = datetime.now().date()
     conn = get_db_connection()
     cursor = conn.cursor()
-    ensure_recurring_tables(cursor)
-    conn.commit()
     
-    # Get all active templates
     cursor.execute("""
         SELECT id, user_id, customer_id, template_name, invoice_date_day, 
-               due_date_days, frequency, tax_type
+               due_date_days, frequency, tax_type, created_at
         FROM recurring_invoice_templates
         WHERE status = 'active'
     """)
@@ -1463,102 +1213,98 @@ def process_due_recurring_templates():
     templates = cursor.fetchall()
     generated_count = 0
     errors = []
+    print(f"Recurring scheduler: found {len(templates)} active template(s)")
     
     for template in templates:
-        template_id, user_id, customer_id, template_name, invoice_date_day, due_date_days, frequency, tax_type = template
+        template_id, user_id, customer_id, template_name, invoice_date_day, due_date_days, frequency, tax_type, created_at = template
         
-        # Check if invoice should be generated today
-        should_generate = False
-        next_send_date = None
+        # Calculate the latest due date for this template (the next one that should be generated)
+        due_invoice_date = latest_due_date_for_template(frequency, invoice_date_day, created_at, today)
+        if not due_invoice_date:
+            print(f"Recurring scheduler: template {template_id} is not due yet")
+            continue
+
+        # Check if invoice already exists for this template for the SAME month and year
+        # The invoice_date should match the due_invoice_date we calculated
+        cursor.execute("""
+            SELECT COUNT(*)
+            FROM invoices
+            WHERE user_id = ?
+              AND recurring_template_id = ?
+              AND is_generated_from_recurring = 1
+              AND invoice_date = ?
+        """, (user_id, template_id, due_invoice_date))
+        already_generated = cursor.fetchone()[0] or 0
         
-        if frequency == 'monthly':
-            # Check if today is the specified day of month
-            if today.day == invoice_date_day:
-                should_generate = True
-                # Calculate next send date for logging
-                if today.month == 12:
-                    next_send_date = today.replace(year=today.year + 1, month=1, day=invoice_date_day)
-                else:
-                    next_send_date = today.replace(month=today.month + 1, day=invoice_date_day)
+        if already_generated:
+            print(f"Recurring scheduler: template {template_id} already generated for {due_invoice_date}")
+            continue
+
+        # Get template items
+        cursor.execute("""
+            SELECT item_name, description, quantity, unit_price, discount_amount, tax_rate
+            FROM recurring_invoice_template_items
+            WHERE template_id = ?
+            ORDER BY sort_order, id
+        """, (template_id,))
         
-        elif frequency == 'weekly':
-            # Check if today is Monday (or specific day)
-            if today.weekday() == 0:  # Monday
-                should_generate = True
-                next_send_date = today + timedelta(days=7)
+        items = []
+        for row in cursor.fetchall():
+            items.append({
+                "item_name": row[0],
+                "description": row[1] or "",
+                "quantity": float(row[2]) if row[2] else 1,
+                "unit_price": float(row[3]) if row[3] else 0,
+                "discount_amount": float(row[4]) if row[4] else 0,
+                "tax_rate": float(row[5]) if row[5] else 0
+            })
+
+        if not items:
+            errors.append({"template_id": template_id, "error": "No recurring template items found"})
+            continue
+
+        # Calculate due date as the last day of the month
+        if due_invoice_date.month == 12:
+            last_day = 31
+        else:
+            next_month = due_invoice_date.month + 1
+            next_year = due_invoice_date.year
+            temp_date = datetime(next_year, next_month, 1).date()
+            last_day = (temp_date - timedelta(days=1)).day
         
-        elif frequency == 'biweekly':
-            # Simplified: check every other week
-            week_number = today.isocalendar()[1]
-            if week_number % 2 == 0:
-                should_generate = True
-                next_send_date = today + timedelta(days=14)
+        due_date = datetime(due_invoice_date.year, due_invoice_date.month, last_day).date()
         
-        elif frequency == 'quarterly':
-            # Check if it's the first day of a quarter
-            if today.month in [1, 4, 7, 10] and today.day == invoice_date_day:
-                should_generate = True
-                next_send_date = today + timedelta(days=91)
+        invoice_request = {
+            "customer_id": customer_id,
+            "invoice_date": due_invoice_date.isoformat(),
+            "due_date": due_date.isoformat(),
+            "items": items,
+            "notes": f"Auto-generated from recurring template: {template_name}",
+            "status": "pending",
+            "tax_type": tax_type or "inclusive",
+            "recurring_template_id": template_id,
+            "is_generated_from_recurring": True
+        }
         
-        elif frequency == 'yearly':
-            if today.month == 1 and today.day == invoice_date_day:
-                should_generate = True
-                next_send_date = today.replace(year=today.year + 1)
-        
-        if should_generate:
-            # Get template items
-            cursor.execute("""
-                SELECT item_name, description, quantity, unit_price, discount_amount, tax_rate
-                FROM recurring_invoice_template_items
-                WHERE template_id = ?
-                ORDER BY sort_order, id
-            """, (template_id,))
-            
-            items = []
-            for row in cursor.fetchall():
-                items.append({
-                    "item_name": row[0],
-                    "description": row[1] or "",
-                    "quantity": float(row[2]) if row[2] else 1,
-                    "unit_price": float(row[3]) if row[3] else 0,
-                    "discount_amount": float(row[4]) if row[4] else 0,
-                    "tax_rate": float(row[5]) if row[5] else 0
-                })
-            
-            # Calculate due date
-            due_date = today + timedelta(days=due_date_days)
-            
-            # Create invoice request
-            invoice_request = {
-                "customer_id": customer_id,
-                "invoice_date": today.isoformat(),
-                "due_date": due_date.isoformat(),
-                "items": items,
-                "notes": f"Auto-generated from recurring template: {template_name}",
-                "status": "pending",
-                "tax_type": tax_type or "inclusive",
-                "recurring_template_id": template_id,
-                "is_generated_from_recurring": True
-            }
-            
-            # Generate invoice (using the current user context)
-            # Note: This runs in background, so we need to temporarily set user context
-            # You'll need to store user_id in the template and use it here
-            
-            try:
-                # Create a temporary user context
-                user_obj = User(user_id, None, None, None)
-                # You need to set current_user context for this operation
-                # This is complex in a background thread - consider using a task queue
+        try:
+            with app.app_context():
+                response, status_code = create_invoice_internal(invoice_request, 'pending', user_id=user_id)
+                payload = response.get_json(silent=True) or {}
                 
-                response, status_code = create_invoice_internal(invoice_request, 'pending')
                 if status_code in (200, 201):
                     generated_count += 1
-                    print(f"Generated invoice from template {template_id}")
+                    invoice_id = payload.get("invoice_id")
+                    invoice_number = payload.get("invoice_number", f"INV-{invoice_id}")
+                    print(f"Recurring scheduler: generated invoice {invoice_number} from template {template_id} for {due_invoice_date} (due: {due_date})")
+                    if task_manager and invoice_id:
+                        try:
+                            task_manager.add_task(invoice_id, user_id, invoice_number)
+                        except Exception as enqueue_error:
+                            print(f"Recurring scheduler: failed to enqueue {invoice_number} for email: {enqueue_error}")
                 else:
-                    errors.append({"template_id": template_id, "error": "Failed to generate"})
-            except Exception as e:
-                errors.append({"template_id": template_id, "error": str(e)})
+                    errors.append({"template_id": template_id, "error": payload.get("error", "Failed to generate")})
+        except Exception as e:
+            errors.append({"template_id": template_id, "error": str(e)})
     
     conn.close()
     return {"generated": generated_count, "errors": errors}
@@ -1576,24 +1322,50 @@ def calculate_next_monthly_date(current_date, day_of_month):
     return datetime(next_year, next_month, day_of_month).date()
 
 def start_recurring_template_scheduler():
-    """Background thread to check templates daily"""
+    """Background thread to check recurring templates automatically."""
+    if getattr(start_recurring_template_scheduler, "_started", False):
+        return
+    start_recurring_template_scheduler._started = True
+
     def scheduler_worker():
-        # Wait for app to fully start
-        time.sleep(30)
+        print("Recurring scheduler started; will check once per day at 1:00 AM with catch-up for missed days")
+        
+        # Do an initial catch-up run immediately on startup
+        print("Recurring scheduler: Running initial catch-up for all missed invoices...")
+        try:
+            result = process_due_recurring_templates()
+            print(
+                f"Recurring scheduler initial catch-up complete: generated {result['generated']} invoice(s), "
+                f"errors={len(result['errors'])}"
+            )
+            if result['errors']:
+                print(f"Recurring scheduler initial catch-up errors: {result['errors']}")
+        except Exception as e:
+            print(f"Recurring scheduler initial catch-up error: {e}")
+        
+        # Then schedule regular checks
         while True:
             try:
-                # Run at 9 AM daily
                 now = datetime.now()
-                if now.hour == 9:
-                    result = process_due_recurring_templates()
-                    print(f"Template scheduler: generated {result['generated']} invoices")
-                # Sleep for 1 hour
-                time.sleep(3600)
+                tomorrow = now + timedelta(days=1)
+                next_run = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 1, 0, 0)
+                sleep_seconds = (next_run - now).total_seconds()
+                
+                print(f"Recurring scheduler: next scheduled check at {next_run.strftime('%Y-%m-%d %H:%M:%S')}")
+                time.sleep(sleep_seconds)
+                
+                result = process_due_recurring_templates()
+                print(
+                    f"Recurring scheduler check complete: generated {result['generated']} invoice(s), "
+                    f"errors={len(result['errors'])}"
+                )
+                if result['errors']:
+                    print(f"Recurring scheduler errors: {result['errors']}")
             except Exception as e:
-                print(f"Template scheduler error: {e}")
+                print(f"Recurring scheduler error: {e}")
                 time.sleep(3600)
     
-    thread = threading.Thread(target=scheduler_worker, daemon=True)
+    thread = threading.Thread(target=scheduler_worker, daemon=True, name="RecurringTemplateScheduler")
     thread.start()
 
 # ============================================
@@ -1611,8 +1383,6 @@ def get_customers():
     
     conn = get_db_connection()
     cursor = conn.cursor()
-    ensure_customer_company_columns(cursor)
-    conn.commit()
     
     query = """
         SELECT id, customer_name, email, phone, address, city, state,
@@ -1693,8 +1463,6 @@ def get_customers():
 def get_customer(customer_id):
     conn = get_db_connection()
     cursor = conn.cursor()
-    ensure_customer_company_columns(cursor)
-    conn.commit()
 
     cursor.execute("""
         SELECT id, customer_name, email, phone, address, city, state,
@@ -1746,7 +1514,6 @@ def create_customer():
     cursor = conn.cursor()
     
     try:
-        ensure_customer_company_columns(cursor)
         cursor.execute("""
             INSERT INTO customers (user_id, customer_name, email, phone, address, 
                                  city, state, postal_code, country, tax_exempt,
@@ -1794,8 +1561,6 @@ def update_customer(customer_id):
     
     conn = get_db_connection()
     cursor = conn.cursor()
-    ensure_customer_company_columns(cursor)
-    conn.commit()
     
     cursor.execute("SELECT id FROM customers WHERE id = ? AND user_id = ?", 
                    (customer_id, current_user.id))
@@ -1886,8 +1651,6 @@ def get_invoices():
     
     conn = get_db_connection()
     cursor = conn.cursor()
-    ensure_invoice_operational_columns(cursor)
-    conn.commit()
     
     cursor.execute("""
         UPDATE invoices 
@@ -1990,12 +1753,10 @@ def get_invoices():
         "total_pages": (total + per_page - 1) // per_page
     }), 200
 
-def create_invoice_internal(data, status='pending'):
+def create_invoice_internal(data, status='pending', user_id=None):
+    owner_id = user_id if user_id is not None else current_user.id
     conn = get_db_connection()
     cursor = conn.cursor()
-    ensure_customer_company_columns(cursor)
-    ensure_company_settings_columns(cursor)
-    conn.commit()
     
     if status == 'quotation' or status == 'quote':
         cursor.execute("""
@@ -2003,7 +1764,7 @@ def create_invoice_internal(data, status='pending'):
             FROM invoices 
             WHERE user_id = ? 
             AND invoice_number LIKE 'QTN-%'
-        """, (current_user.id,))
+        """, (owner_id,))
         max_num = cursor.fetchone()[0] or 0
         next_num = max_num + 1
         invoice_number = f"QTN-{next_num:06d}"
@@ -2013,7 +1774,7 @@ def create_invoice_internal(data, status='pending'):
             FROM invoices 
             WHERE user_id = ? 
             AND invoice_number LIKE 'INV-%'
-        """, (current_user.id,))
+        """, (owner_id,))
         max_num = cursor.fetchone()[0] or 0
         next_num = max_num + 1
         invoice_number = f"INV-{next_num:06d}"
@@ -2066,11 +1827,9 @@ def create_invoice_internal(data, status='pending'):
     
     due_date = data.get('due_date') if invoice_status not in ['quotation', 'quote'] else None
 
-    # Get recurring template ID if this invoice is created from a template
     recurring_template_id = data.get('recurring_template_id')
     is_generated_from_recurring = 1 if data.get('is_generated_from_recurring') else 0
     
-    # Check both possible field names from Android app
     should_create_recurring = data.get('should_create_recurring_template', False) or data.get('is_recurring', False)
 
     try:
@@ -2083,7 +1842,7 @@ def create_invoice_internal(data, status='pending'):
                 recurring_template_id, is_generated_from_recurring, created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())
         """, (
-            current_user.id,
+            owner_id,
             data['customer_id'],
             invoice_number,
             data['invoice_date'],
@@ -2128,10 +1887,9 @@ def create_invoice_internal(data, status='pending'):
         
         conn.commit()
         
-        # If this invoice should create a recurring template, create it
         if should_create_recurring and not is_generated_from_recurring:
             print(f"DEBUG: Creating recurring template for invoice {invoice_id}")
-            create_recurring_template_from_invoice(invoice_id, data, current_user.id)
+            create_recurring_template_from_invoice(invoice_id, data, owner_id)
         
         return jsonify({
             "success": True,
@@ -2162,8 +1920,6 @@ def create_invoice():
     if not data['items'] or len(data['items']) == 0:
         return jsonify({"error": "At least one invoice item is required"}), 400
     
-    # Pass recurring data to create_invoice_internal
-    # This data will be used to create a template
     return create_invoice_internal(data, 'pending')
 
 @app.route('/api/quotations', methods=['POST'])
@@ -2201,8 +1957,6 @@ def create_invoice_as_draft():
 def update_invoice_internal(invoice_id, data, status=None):
     conn = get_db_connection()
     cursor = conn.cursor()
-    ensure_invoice_operational_columns(cursor)
-    conn.commit()
     
     cursor.execute("""
         SELECT id, status, amount_paid, tax_rate, discount_amount, shipping_fee, tax_type
@@ -2260,8 +2014,6 @@ def update_invoice_internal(invoice_id, data, status=None):
             update_fields.append("tax_type = ?")
             params.append(data.get('tax_type', 'exclusive'))
         
-        # NO recurring column updates here - those belong to templates, not invoices
-        
         target_status = status or data.get('status')
         if target_status in ['draft', 'pending', 'overdue', 'paid', 'cancelled', 'quotation', 'quote']:
             update_fields.append("status = ?")
@@ -2274,7 +2026,6 @@ def update_invoice_internal(invoice_id, data, status=None):
             query = f"UPDATE invoices SET {', '.join(update_fields)} WHERE id = ? AND user_id = ?"
             cursor.execute(query, params + [current_user.id])
 
-        # Rest of the update logic remains the same...
         tax_type = data.get('tax_type', invoice[6] or 'exclusive')
         is_inclusive = tax_type == 'inclusive'
 
@@ -2386,42 +2137,44 @@ def get_recurring_invoice_queue_status():
     today = datetime.now().date()
     conn = get_db_connection()
     cursor = conn.cursor()
+    ensure_recurring_tables(cursor)
     ensure_invoice_operational_columns(cursor)
     conn.commit()
 
     cursor.execute("""
         SELECT COUNT(*)
-        FROM invoices
-        WHERE user_id = ?
-          AND is_recurring = 1
-          AND recurring_active = 1
-          AND status NOT IN ('cancelled', 'quotation', 'quote')
+        FROM recurring_invoice_templates
+        WHERE user_id = ? AND status = 'active'
     """, (current_user.id,))
     active_count = cursor.fetchone()[0] or 0
 
     cursor.execute("""
-        SELECT COUNT(*)
-        FROM invoices
-        WHERE user_id = ?
-          AND is_recurring = 1
-          AND recurring_active = 1
-          AND status NOT IN ('cancelled', 'quotation', 'quote')
-          AND (recurring_next_send_date IS NULL OR recurring_next_send_date <= ?)
-    """, (current_user.id, today))
-    due_count = cursor.fetchone()[0] or 0
-
-    cursor.execute("""
-        SELECT MIN(recurring_next_send_date)
-        FROM invoices
-        WHERE user_id = ?
-          AND is_recurring = 1
-          AND recurring_active = 1
-          AND recurring_next_send_date IS NOT NULL
+        SELECT id, invoice_date_day, frequency, created_at
+        FROM recurring_invoice_templates
+        WHERE user_id = ? AND status = 'active'
     """, (current_user.id,))
-    next_row = cursor.fetchone()
+
+    due_count = 0
+    next_dates = []
+    for row in cursor.fetchall():
+        template_id, invoice_date_day, frequency, created_at = row
+        due_invoice_date = latest_due_date_for_template(frequency, invoice_date_day, created_at, today)
+        if due_invoice_date:
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM invoices
+                WHERE user_id = ?
+                  AND recurring_template_id = ?
+                  AND is_generated_from_recurring = 1
+                  AND invoice_date = ?
+            """, (current_user.id, template_id, due_invoice_date))
+            if (cursor.fetchone()[0] or 0) == 0:
+                due_count += 1
+        next_dates.append(calculate_next_template_send_date(frequency, invoice_date_day))
+
     conn.close()
 
-    next_date = next_row[0].isoformat() if next_row and next_row[0] else None
+    next_date = min(next_dates).isoformat() if next_dates else None
     return jsonify({
         "active_count": active_count,
         "due_count": due_count,
@@ -2431,112 +2184,16 @@ def get_recurring_invoice_queue_status():
 @app.route('/api/recurring-invoices/process-due', methods=['POST'])
 @login_required
 def process_due_recurring_invoices():
-    today = datetime.now().date()
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    ensure_invoice_operational_columns(cursor)
-    conn.commit()
-
-    cursor.execute("""
-        SELECT id, customer_id, recurring_frequency, recurring_day, due_date,
-               tax_rate, discount_amount, shipping_fee, notes, payment_terms,
-               terms_conditions, footer_text, tax_type
-        FROM invoices
-        WHERE user_id = ?
-          AND is_recurring = 1
-          AND recurring_active = 1
-          AND status NOT IN ('cancelled', 'quotation', 'quote')
-          AND (recurring_next_send_date IS NULL OR recurring_next_send_date <= ?)
-    """, (current_user.id, today))
-    due_invoices = cursor.fetchall()
-
-    generated = []
-    errors = []
-
-    for invoice in due_invoices:
-        source_invoice_id = invoice[0]
-        cursor.execute("""
-            SELECT item_name, description, quantity, unit_price, discount_amount, tax_rate
-            FROM invoice_items
-            WHERE invoice_id = ?
-            ORDER BY sort_order, id
-        """, (source_invoice_id,))
-        items = [{
-            "item_name": row[0],
-            "description": row[1] or "",
-            "quantity": float(row[2]) if row[2] else 1,
-            "unit_price": float(row[3]) if row[3] else 0,
-            "discount_amount": float(row[4]) if row[4] else 0,
-            "tax_rate": float(row[5]) if row[5] else 0
-        } for row in cursor.fetchall()]
-
-        if not items:
-            errors.append({"invoice_id": source_invoice_id, "error": "No invoice items found"})
-            continue
-
-        next_invoice_date = today
-        original_due_date = invoice[4]
-        due_days = 30
-        if original_due_date:
-            try:
-                due_days = max((original_due_date - today).days, 0)
-            except Exception:
-                due_days = 30
-
-        invoice_request = {
-            "customer_id": invoice[1],
-            "invoice_date": next_invoice_date.isoformat(),
-            "due_date": (next_invoice_date + timedelta(days=due_days)).isoformat(),
-            "tax_rate": float(invoice[5]) if invoice[5] else 0,
-            "discount_amount": float(invoice[6]) if invoice[6] else 0,
-            "shipping_fee": float(invoice[7]) if invoice[7] else 0,
-            "notes": invoice[8] or "",
-            "payment_terms": invoice[9] or "",
-            "terms_conditions": invoice[10] or "",
-            "footer_text": invoice[11] or "",
-            "tax_type": invoice[12] or "inclusive",
-            "items": items,
-            "status": "pending",
-            "is_generated_from_recurring": True
-        }
-
-        response, status_code = create_invoice_internal(invoice_request, 'pending')
-        payload = response.get_json(silent=True) or {}
-        if status_code in (200, 201) and payload.get("invoice_id"):
-            invoice_id = payload["invoice_id"]
-            invoice_number = payload.get("invoice_number", f"INV-{invoice_id}")
-            generated.append(payload)
-
-            if task_manager:
-                try:
-                    task_manager.add_task(invoice_id, current_user.id, invoice_number)
-                    print(f"Recurring invoice {invoice_number} enqueued for email")
-                except Exception as e:
-                    print(f"Failed to enqueue email for recurring invoice {invoice_number}: {e}")
-
-            new_next_send_date = calculate_recurring_next_send_date(invoice[2], invoice[3]).isoformat()
-            cursor.execute("""
-                UPDATE invoices
-                SET recurring_next_send_date = ?, updated_at = GETDATE()
-                WHERE id = ? AND user_id = ?
-            """, (new_next_send_date, source_invoice_id, current_user.id))
-            conn.commit()
-        else:
-            errors.append({"invoice_id": source_invoice_id, "error": payload.get("error", "Failed to generate invoice")})
-
-    conn.close()
+    result = process_due_recurring_templates()
     return jsonify({
-        "success": len(errors) == 0,
-        "generated_count": len(generated),
-        "generated": generated,
-        "errors": errors
-    }), 200 if not errors else 207
+        "success": len(result["errors"]) == 0,
+        "generated_count": result["generated"],
+        "errors": result["errors"]
+    }), 200 if not result["errors"] else 207
 
 def get_invoice_email_payload(invoice_id, user_id=None):
     conn = get_db_connection()
     cursor = conn.cursor()
-    ensure_company_settings_columns(cursor)
-    conn.commit()
     owner_id = user_id if user_id is not None else current_user.id
 
     cursor.execute("""
@@ -2761,6 +2418,10 @@ def send_invoice(invoice_id):
             "error": str(e),
             "message": "Invoice was saved as pending, but email sending failed"
         }), 500
+
+# ============================================
+# PAYMENT ENDPOINTS
+# ============================================
 
 @app.route('/api/payments/<int:payment_id>/reverse', methods=['POST'])
 @login_required
@@ -3007,8 +2668,6 @@ def delete_invoice(invoice_id):
 def get_invoice_by_id(invoice_id):
     conn = get_db_connection()
     cursor = conn.cursor()
-    ensure_invoice_operational_columns(cursor)
-    conn.commit()
     
     cursor.execute("""
         SELECT i.*, c.customer_name, c.email as customer_email, c.phone as customer_phone,
@@ -3095,8 +2754,6 @@ def record_payment(invoice_id):
     
     conn = get_db_connection()
     cursor = conn.cursor()
-    ensure_invoice_operational_columns(cursor)
-    conn.commit()
     
     try:
         cursor.execute("""
@@ -3347,9 +3004,6 @@ def generate_invoice_pdf(invoice_id):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        ensure_customer_company_columns(cursor)
-        ensure_company_settings_columns(cursor)
-        conn.commit()
         
         cursor.execute("SELECT invoice_template FROM users WHERE id = ?", (current_user.id,))
         template_result = cursor.fetchone()
@@ -3544,8 +3198,6 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 def get_company_settings():
     conn = get_db_connection()
     cursor = conn.cursor()
-    ensure_company_settings_columns(cursor)
-    conn.commit()
     
     cursor.execute("""
         SELECT * FROM company_settings WHERE user_id = ?
@@ -3586,8 +3238,6 @@ def update_company_settings():
     
     conn = get_db_connection()
     cursor = conn.cursor()
-    ensure_company_settings_columns(cursor)
-    conn.commit()
     
     update_fields = []
     params = []
@@ -3660,8 +3310,6 @@ def upload_company_logo():
         logo_url = f"/static/uploads/{filename}"
         conn = get_db_connection()
         cursor = conn.cursor()
-        ensure_company_settings_columns(cursor)
-        conn.commit()
         
         cursor.execute("SELECT id FROM company_settings WHERE user_id = ?", (current_user.id,))
         if cursor.fetchone():
@@ -3689,8 +3337,6 @@ def remove_company_logo():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        ensure_company_settings_columns(cursor)
-        conn.commit()
         
         cursor.execute("SELECT company_logo_url FROM company_settings WHERE user_id = ?", (current_user.id,))
         result = cursor.fetchone()
@@ -3756,6 +3402,21 @@ def get_dashboard_stats():
     paid_result = cursor.fetchone()
     paid_count = paid_result[0] if paid_result else 0
     paid_amount = float(paid_result[1]) if paid_result else 0.0
+
+    last_30_days_start = today - timedelta(days=30)
+    cursor.execute("""
+        SELECT
+            COUNT(*) as paid_last_30_days_count,
+            ISNULL(SUM(total_amount), 0) as paid_last_30_days_amount
+        FROM invoices
+        WHERE user_id = ?
+        AND status = 'paid'
+        AND updated_at >= ?
+        AND status NOT IN ('quotation', 'quote')
+    """, (current_user.id, last_30_days_start))
+    paid_recent_result = cursor.fetchone()
+    paid_last_30_days_count = paid_recent_result[0] if paid_recent_result else 0
+    paid_last_30_days_amount = float(paid_recent_result[1]) if paid_recent_result else 0.0
     
     cursor.execute("""
         SELECT 
@@ -3854,7 +3515,6 @@ def get_dashboard_stats():
     cursor.execute("SELECT COUNT(*) FROM recurring_invoice_templates WHERE user_id = ?", (current_user.id,))
     recurring_count = cursor.fetchone()[0] or 0
 
-    # NEW: Calculate total amount of all recurring templates
     cursor.execute("""
         SELECT ISNULL(SUM(rit.quantity * rit.unit_price - rit.discount_amount), 0) as template_total
         FROM recurring_invoice_templates rt
@@ -3886,6 +3546,8 @@ def get_dashboard_stats():
         "invoice_counts": invoice_counts,
         "paid_count": paid_count,
         "paid_amount": paid_amount,
+        "paid_last_30_days_count": paid_last_30_days_count,
+        "paid_last_30_days_amount": paid_last_30_days_amount,
         "overdue_count": overdue_count,
         "overdue_amount": overdue_amount,
         "pending_count": pending_count,
@@ -3981,21 +3643,6 @@ def get_expenses():
         "total_pages": (total + per_page - 1) // per_page
     }), 200
 
-def ensure_expense_date_optional(cursor):
-    cursor.execute("""
-        IF EXISTS (
-            SELECT 1
-            FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = 'dbo'
-              AND TABLE_NAME = 'expenses'
-              AND COLUMN_NAME = 'expense_date'
-              AND IS_NULLABLE = 'NO'
-        )
-        BEGIN
-            ALTER TABLE dbo.expenses ALTER COLUMN expense_date DATE NULL
-        END
-    """)
-
 @app.route('/api/expenses', methods=['POST'])
 @login_required
 def create_expense():
@@ -4010,7 +3657,6 @@ def create_expense():
     cursor = conn.cursor()
     
     try:
-        ensure_expense_date_optional(cursor)
         cursor.execute("""
             INSERT INTO expenses (
                 user_id, expense_date, category, amount, description,
@@ -4092,7 +3738,6 @@ def update_expense(expense_id):
     cursor = conn.cursor()
 
     try:
-        ensure_expense_date_optional(cursor)
         cursor.execute("""
             UPDATE expenses
             SET expense_date = ?,
@@ -4152,26 +3797,6 @@ def delete_expense(expense_id):
 # BUDGET MANAGEMENT
 # ============================================
 
-def ensure_budgets_table(cursor):
-    cursor.execute("""
-        IF OBJECT_ID('dbo.budgets', 'U') IS NULL
-        BEGIN
-            CREATE TABLE dbo.budgets (
-                id INT IDENTITY(1,1) PRIMARY KEY,
-                user_id INT NOT NULL,
-                category NVARCHAR(100) NOT NULL,
-                budget_month INT NOT NULL,
-                budget_year INT NOT NULL,
-                budget_amount DECIMAL(18, 2) NOT NULL DEFAULT 0,
-                notifications_enabled BIT NOT NULL DEFAULT 1,
-                created_at DATETIME NOT NULL DEFAULT GETDATE(),
-                updated_at DATETIME NOT NULL DEFAULT GETDATE(),
-                CONSTRAINT UQ_budgets_user_category_month_year
-                    UNIQUE (user_id, category, budget_month, budget_year)
-            )
-        END
-    """)
-
 @app.route('/api/budgets', methods=['GET'])
 @login_required
 def get_budgets():
@@ -4185,9 +3810,6 @@ def get_budgets():
     cursor = conn.cursor()
 
     try:
-        ensure_budgets_table(cursor)
-        conn.commit()
-
         cursor.execute("""
             SELECT category, ISNULL(SUM(amount), 0)
             FROM expenses
@@ -4242,7 +3864,6 @@ def save_budget():
     cursor = conn.cursor()
 
     try:
-        ensure_budgets_table(cursor)
         cursor.execute("""
             UPDATE budgets
             SET budget_amount = ?,
@@ -4622,1001 +4243,10 @@ def delete_invoice_item_category(category_id):
             "success": True,
             "message": "Category deleted successfully"
         }), 200
-        
+       
     except Exception as e:
         print(f"Error deleting category: {e}")
         return jsonify({"error": str(e)}), 500
-
-# ==================== INVOICE COMMUNICATION ENDPOINTS ====================
-
-def communication_row_to_dict(row):
-    return {
-        "id": row[0],
-        "invoice_id": row[1],
-        "invoice_number": row[2],
-        "customer_id": row[3],
-        "customer_name": row[4],
-        "customer_email": row[5],
-        "communication_type": row[6],
-        "subject": row[7],
-        "message_body": row[8],
-        "sent_at": row[9].isoformat() if row[9] else None,
-        "is_read_by_customer": bool(row[10]),
-        "read_at": row[11].isoformat() if row[11] else None,
-        "customer_replied": bool(row[12]),
-        "reply_at": row[13].isoformat() if row[13] else None,
-        "reply_body": row[14]
-    }
-
-def communication_filter_clause(filter_name):
-    if filter_name == "sent":
-        return "AND ic.communication_type IN ('sent', 'follow_up', 'reply')"
-    if filter_name == "opened":
-        return "AND ic.is_read_by_customer = 1"
-    if filter_name == "replied":
-        return """
-            AND (
-                ic.communication_type = 'customer_reply'
-                OR (ic.customer_replied = 1 AND ic.reply_body IS NOT NULL)
-            )
-        """
-    return ""
-
-@app.route('/api/invoices/communications', methods=['GET'])
-@login_required
-def get_all_invoice_communications():
-    try:
-        filter_name = (request.args.get('filter') or 'all').lower()
-        if filter_name not in ['all', 'sent', 'opened', 'replied']:
-            return jsonify({"error": "Invalid communication filter"}), 400
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(f"""
-            SELECT
-                ic.id,
-                ic.invoice_id,
-                i.invoice_number,
-                ic.customer_id,
-                c.customer_name,
-                c.email as customer_email,
-                ic.communication_type,
-                ic.subject,
-                ic.message_body,
-                ic.sent_at,
-                ic.is_read_by_customer,
-                ic.read_at,
-                ic.customer_replied,
-                ic.reply_at,
-                ic.reply_body
-            FROM invoice_communications ic
-            JOIN invoices i ON ic.invoice_id = i.id
-            JOIN customers c ON ic.customer_id = c.id
-            WHERE i.user_id = ?
-            {communication_filter_clause(filter_name)}
-            ORDER BY COALESCE(ic.reply_at, ic.sent_at) DESC
-        """, (current_user.id,))
-
-        communications = [communication_row_to_dict(row) for row in cursor.fetchall()]
-        conn.close()
-        return jsonify(communications), 200
-
-    except Exception as e:
-        print(f"Error getting all communications: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/invoices/<int:invoice_id>/communications', methods=['GET'])
-@login_required
-def get_invoice_communications(invoice_id):
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            SELECT 
-                ic.id,
-                ic.invoice_id,
-                i.invoice_number,
-                ic.customer_id,
-                c.customer_name,
-                c.email as customer_email,
-                ic.communication_type,
-                ic.subject,
-                ic.message_body,
-                ic.sent_at,
-                ic.is_read_by_customer,
-                ic.read_at,
-                ic.customer_replied,
-                ic.reply_at,
-                ic.reply_body
-            FROM invoice_communications ic
-            JOIN invoices i ON ic.invoice_id = i.id
-            JOIN customers c ON ic.customer_id = c.id
-            WHERE ic.invoice_id = ? AND i.user_id = ?
-            ORDER BY ic.sent_at DESC
-        """, (invoice_id, current_user.id))
-        
-        communications = [communication_row_to_dict(row) for row in cursor.fetchall()]
-        
-        conn.close()
-        return jsonify(communications), 200
-        
-    except Exception as e:
-        print(f"Error getting communications: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/invoices/communications/<int:communication_id>/open.gif', methods=['GET'])
-def track_communication_open(communication_id):
-    pixel = (
-        b'GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!'
-        b'\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01'
-        b'\x00\x00\x02\x02D\x01\x00;'
-    )
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE invoice_communications
-            SET is_read_by_customer = 1,
-                read_at = COALESCE(read_at, GETDATE())
-            WHERE id = ?
-        """, (communication_id,))
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        print(f"Error tracking communication open: {e}")
-
-    response = make_response(pixel)
-    response.headers['Content-Type'] = 'image/gif'
-    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
-    response.headers['Pragma'] = 'no-cache'
-    return response
-
-@app.route('/api/invoices/send-email', methods=['POST'])
-@login_required
-def send_invoice_email():
-    try:
-        data = request.get_json()
-        invoice_id = data.get('invoice_id')
-        subject = data.get('subject')
-        message = data.get('message')
-        is_follow_up = data.get('is_follow_up', False)
-        
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            SELECT 
-                i.id, 
-                i.invoice_number, 
-                i.total_amount, 
-                i.balance_due,
-                i.status,
-                c.id as customer_id, 
-                c.customer_name, 
-                c.email as customer_email
-            FROM invoices i
-            JOIN customers c ON i.customer_id = c.id
-            WHERE i.id = ? AND i.user_id = ?
-        """, (invoice_id, current_user.id))
-        
-        invoice = cursor.fetchone()
-        if not invoice:
-            conn.close()
-            return jsonify({"error": "Invoice not found"}), 404
-        
-        invoice_id_db = invoice[0]
-        invoice_number = invoice[1]
-        invoice_amount = float(invoice[2]) if invoice[2] else 0
-        balance_due = float(invoice[3]) if invoice[3] else 0
-        invoice_status = invoice[4]
-        customer_id = invoice[5]
-        customer_name = invoice[6]
-        customer_email = invoice[7]
-        
-        if not customer_email or '@' not in customer_email:
-            conn.close()
-            return jsonify({
-                "success": False,
-                "error": f"Customer '{customer_name}' has an invalid email address: '{customer_email}'. Please update the customer's email before sending."
-            }), 400
-        
-        cursor.execute("""
-            INSERT INTO invoice_communications 
-            (invoice_id, customer_id, communication_type, subject, message_body, sent_at, created_by)
-            OUTPUT INSERTED.id
-            VALUES (?, ?, ?, ?, ?, GETDATE(), ?)
-        """, (invoice_id, customer_id, 'follow_up' if is_follow_up else 'sent',
-              subject, message, current_user.id))
-        communication_id = cursor.fetchone()[0]
-        conn.commit()
-
-        tracking_url = url_for(
-            'track_communication_open',
-            communication_id=communication_id,
-            _external=True
-        )
-
-        email_sent = send_customer_email_message(
-            to_email=customer_email,
-            to_name=customer_name,
-            subject=subject,
-            body=message,
-            invoice_number=invoice_number,
-            invoice_amount=balance_due if is_follow_up else invoice_amount,
-            invoice_status=invoice_status,
-            tracking_url=tracking_url,
-            amount_label="Balance Due" if is_follow_up else "Amount"
-        )
-        
-        if email_sent:
-            if is_follow_up:
-                cursor.execute("""
-                    IF EXISTS (SELECT 1 FROM invoice_follow_ups WHERE invoice_id = ?)
-                        UPDATE invoice_follow_ups
-                        SET message_sent = 1,
-                            message_sent_at = GETDATE()
-                        WHERE invoice_id = ?
-                    ELSE
-                        INSERT INTO invoice_follow_ups
-                        (invoice_id, follow_up_date, follow_up_type, message_sent, message_sent_at, completed)
-                        VALUES (?, GETDATE(), 'standard', 1, GETDATE(), 0)
-                """, (invoice_id, invoice_id, invoice_id))
-            
-            conn.commit()
-        else:
-            cursor.execute("DELETE FROM invoice_communications WHERE id = ?", (communication_id,))
-            conn.commit()
-        
-        conn.close()
-        
-        return jsonify({
-            "success": email_sent,
-            "message": "Email sent successfully" if email_sent else "Failed to send email",
-            "sent_to": customer_email
-        }), 200
-        
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/invoices/send-reply', methods=['POST'])
-@login_required
-def send_reply():
-    try:
-        data = request.get_json()
-        communication_id = data.get('communication_id')
-        subject = data.get('subject')
-        message = data.get('message')
-        
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            SELECT ic.customer_id, ic.invoice_id, c.customer_name, c.email
-            FROM invoice_communications ic
-            JOIN customers c ON ic.customer_id = c.id
-            WHERE ic.id = ?
-        """, (communication_id,))
-        
-        comm = cursor.fetchone()
-        if not comm:
-            conn.close()
-            return jsonify({"error": "Communication not found"}), 404
-        
-        customer_id, invoice_id, customer_name, customer_email = comm
-        
-        email_sent = send_customer_email_message(
-            to_email=customer_email,
-            to_name=customer_name,
-            subject=f"Re: {subject}",
-            body=message,
-            is_reply=True
-        )
-        
-        if email_sent:
-            cursor.execute("""
-                UPDATE invoice_communications
-                SET customer_replied = 1, reply_at = GETDATE(), reply_body = ?
-                WHERE id = ?
-            """, (message, communication_id))
-            
-            cursor.execute("""
-                INSERT INTO invoice_communications 
-                (invoice_id, customer_id, communication_type, subject, message_body, sent_at, created_by)
-                VALUES (?, ?, 'reply', ?, ?, GETDATE(), ?)
-            """, (invoice_id, customer_id, subject, message, current_user.id))
-            
-            conn.commit()
-        
-        conn.close()
-        
-        return jsonify({
-            "success": email_sent,
-            "message": "Reply sent successfully" if email_sent else "Failed to send reply"
-        }), 200
-        
-    except Exception as e:
-        print(f"Error sending reply: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/invoices/communications/summary', methods=['GET'])
-@login_required
-def get_communication_summary():
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            SELECT COUNT(*)
-            FROM invoice_communications ic
-            JOIN invoices i ON ic.invoice_id = i.id
-            WHERE i.user_id = ?
-              AND ic.communication_type IN ('sent', 'follow_up', 'reply')
-        """, (current_user.id,))
-        total_sent = cursor.fetchone()[0] or 0
-        
-        cursor.execute("""
-            SELECT COUNT(*)
-            FROM invoice_communications ic
-            JOIN invoices i ON ic.invoice_id = i.id
-            WHERE i.user_id = ? AND ic.is_read_by_customer = 1
-        """, (current_user.id,))
-        opened = cursor.fetchone()[0] or 0
-        
-        cursor.execute("""
-            SELECT COUNT(*)
-            FROM invoice_communications ic
-            JOIN invoices i ON ic.invoice_id = i.id
-            WHERE i.user_id = ?
-              AND (
-                  ic.communication_type = 'customer_reply'
-                  OR (ic.customer_replied = 1 AND ic.reply_body IS NOT NULL)
-              )
-        """, (current_user.id,))
-        replied = cursor.fetchone()[0] or 0
-        
-        cursor.execute("""
-            SELECT COUNT(*)
-            FROM invoices i
-            LEFT JOIN invoice_follow_ups f ON i.id = f.invoice_id
-            WHERE i.user_id = ?
-              AND i.status IN ('pending', 'overdue', 'sent')
-              AND i.balance_due > 0
-              AND (f.completed IS NULL OR f.completed = 0)
-        """, (current_user.id,))
-        pending_follow_ups = cursor.fetchone()[0] or 0
-
-        cursor.execute("""
-            SELECT TOP 5
-                i.id,
-                i.invoice_number,
-                c.customer_name,
-                COALESCE(ic.reply_at, ic.sent_at) as reply_at,
-                COALESCE(ic.reply_body, ic.message_body) as reply_body
-            FROM invoice_communications ic
-            JOIN invoices i ON ic.invoice_id = i.id
-            JOIN customers c ON ic.customer_id = c.id
-            WHERE i.user_id = ?
-              AND (
-                  (ic.customer_replied = 1 AND ic.reply_body IS NOT NULL)
-                  OR ic.communication_type = 'customer_reply'
-              )
-            ORDER BY COALESCE(ic.reply_at, ic.sent_at) DESC
-        """, (current_user.id,))
-        recent_replies = []
-        for row in cursor.fetchall():
-            recent_replies.append({
-                "invoice_id": row[0],
-                "invoice_number": row[1],
-                "customer_name": row[2],
-                "reply_at": row[3].isoformat() if row[3] else None,
-                "reply_body": row[4]
-            })
-        
-        conn.close()
-        
-        return jsonify({
-            "total_sent": total_sent,
-            "opened": opened,
-            "replied": replied,
-            "pending_follow_ups": pending_follow_ups,
-            "recent_replies": recent_replies
-        }), 200
-        
-    except Exception as e:
-        print(f"Error getting summary: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/invoices/communications/sync-inbox', methods=['POST'])
-@login_required
-def sync_communications_inbox():
-    try:
-        data = request.get_json(silent=True) or {}
-        days_back = int(data.get("days_back", 14))
-        limit = int(data.get("limit", 50))
-        result = sync_inbox_for_user(current_user.id, days_back=days_back, limit=limit)
-        return jsonify({
-            "success": True,
-            "message": f"Synced inbox. Matched {result['matched']} customer replies.",
-            **result
-        }), 200
-    except Exception as e:
-        print(f"Error syncing inbox: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"success": False, "error": str(e)}), 500
-
-@app.route('/api/invoices/communications/inbound-webhook', methods=['POST'])
-def inbound_communications_webhook():
-    try:
-        if INBOUND_WEBHOOK_SECRET:
-            provided_secret = request.headers.get("X-InvoiceApp-Webhook-Secret") or request.args.get("secret")
-            if provided_secret != INBOUND_WEBHOOK_SECRET:
-                return jsonify({"error": "Unauthorized"}), 401
-
-        data = request.get_json() or {}
-        user_id = data.get("user_id")
-        sender_email = (data.get("from_email") or data.get("sender_email") or "").strip().lower()
-        subject = data.get("subject") or ""
-        body = clean_inbound_reply_body(data.get("text") or data.get("body") or data.get("message") or "")
-        message_id = str(data.get("message_id") or f"webhook-{secrets.token_hex(16)}")[:300]
-
-        if not user_id or not sender_email or not body:
-            return jsonify({"error": "user_id, from_email, and body are required"}), 400
-
-        received_at = datetime.now()
-        if data.get("received_at"):
-            try:
-                received_at = datetime.fromisoformat(str(data["received_at"]).replace("Z", "+00:00")).replace(tzinfo=None)
-            except Exception:
-                received_at = datetime.now()
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        ensure_email_sync_table(cursor)
-        conn.commit()
-
-        if message_already_processed(cursor, user_id, message_id):
-            conn.close()
-            return jsonify({"success": True, "matched": False, "message": "Message already processed"}), 200
-
-        matched = record_inbound_reply(cursor, user_id, message_id, sender_email, subject, body, received_at)
-        conn.commit()
-        conn.close()
-
-        return jsonify({
-            "success": True,
-            "matched": matched,
-            "message": "Inbound reply recorded" if matched else "Inbound email stored but no matching invoice communication was found"
-        }), 200
-    except Exception as e:
-        print(f"Error processing inbound webhook: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"success": False, "error": str(e)}), 500
-
-@app.route('/api/invoices/follow-ups/pending', methods=['GET'])
-@login_required
-def get_pending_follow_ups():
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            SELECT 
-                i.id,
-                i.invoice_number,
-                c.id as customer_id,
-                c.customer_name,
-                c.email as customer_email,
-                c.phone as customer_phone,
-                i.total_amount,
-                i.balance_due,
-                i.due_date,
-                i.status,
-                DATEDIFF(day, i.due_date, GETDATE()) as days_overdue,
-                CASE 
-                    WHEN DATEDIFF(day, i.due_date, GETDATE()) > 30 THEN 'critical'
-                    WHEN DATEDIFF(day, i.due_date, GETDATE()) > 14 THEN 'urgent'
-                    WHEN DATEDIFF(day, i.due_date, GETDATE()) > 7 THEN 'overdue'
-                    ELSE 'standard'
-                END as follow_up_type,
-                ISNULL(f.completed, 0) as completed,
-                ISNULL(f.message_sent, 0) as message_sent,
-                ISNULL(f.customer_responded, 0) as customer_responded,
-                f.message_sent_at,
-                f.responded_at,
-                f.notes
-            FROM invoices i
-            JOIN customers c ON i.customer_id = c.id
-            LEFT JOIN invoice_follow_ups f ON i.id = f.invoice_id
-            WHERE i.user_id = ? 
-            AND i.status IN ('pending', 'overdue', 'sent')
-            AND i.balance_due > 0
-            AND (f.completed IS NULL OR f.completed = 0)
-            ORDER BY i.due_date ASC
-        """, (current_user.id,))
-        
-        follow_ups = []
-        for row in cursor.fetchall():
-            follow_ups.append({
-                "id": row[0],
-                "invoice_id": row[0],
-                "invoice_number": row[1],
-                "customer_id": row[2],
-                "customer_name": row[3],
-                "customer_email": row[4],
-                "customer_phone": row[5],
-                "total_amount": float(row[6]) if row[6] else 0,
-                "balance_due": float(row[7]) if row[7] else 0,
-                "follow_up_date": row[8].isoformat() if row[8] else None,
-                "status": row[9],
-                "days_overdue": row[10] if row[10] else 0,
-                "follow_up_type": row[11] if row[11] else 'standard',
-                "completed": bool(row[12]) if row[12] is not None else False,
-                "message_sent": bool(row[13]) if row[13] is not None else False,
-                "customer_responded": bool(row[14]) if row[14] is not None else False,
-                "message_sent_at": row[15].isoformat() if row[15] else None,
-                "responded_at": row[16].isoformat() if row[16] else None,
-                "notes": row[17]
-            })
-        
-        conn.close()
-        return jsonify(follow_ups), 200
-        
-    except Exception as e:
-        print(f"Error getting follow-ups: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/invoices/follow-ups/<int:follow_up_id>/mark-sent', methods=['POST'])
-@login_required
-def mark_follow_up_sent(follow_up_id):
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            SELECT f.id, f.invoice_id, f.message_sent
-            FROM invoice_follow_ups f
-            JOIN invoices i ON f.invoice_id = i.id
-            WHERE f.id = ? AND i.user_id = ?
-        """, (follow_up_id, current_user.id))
-        
-        follow_up = cursor.fetchone()
-        
-        if not follow_up:
-            conn.close()
-            return jsonify({"error": "Follow-up not found"}), 404
-        
-        if follow_up[2]:
-            conn.close()
-            return jsonify({"error": "Follow-up already marked as sent"}), 400
-        
-        cursor.execute("""
-            UPDATE invoice_follow_ups
-            SET message_sent = 1,
-                message_sent_at = GETDATE()
-            WHERE id = ?
-        """, (follow_up_id,))
-        
-        conn.commit()
-        conn.close()
-        
-        return jsonify({
-            "success": True,
-            "message": "Follow-up marked as sent successfully"
-        }), 200
-        
-    except Exception as e:
-        print(f"Error marking follow-up as sent: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/invoices/follow-ups/<int:follow_up_id>/complete', methods=['POST'])
-@login_required
-def complete_follow_up(follow_up_id):
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            SELECT f.id, f.invoice_id, f.completed
-            FROM invoice_follow_ups f
-            JOIN invoices i ON f.invoice_id = i.id
-            WHERE f.id = ? AND i.user_id = ?
-        """, (follow_up_id, current_user.id))
-        
-        follow_up = cursor.fetchone()
-        
-        if not follow_up:
-            conn.close()
-            return jsonify({"error": "Follow-up not found"}), 404
-        
-        if follow_up[2]:
-            conn.close()
-            return jsonify({"error": "Follow-up already completed"}), 400
-        
-        cursor.execute("""
-            UPDATE invoice_follow_ups
-            SET completed = 1
-            WHERE id = ?
-        """, (follow_up_id,))
-        
-        conn.commit()
-        conn.close()
-        
-        return jsonify({
-            "success": True,
-            "message": "Follow-up marked as completed successfully"
-        }), 200
-        
-    except Exception as e:
-        print(f"Error completing follow-up: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/customers/<int:customer_id>/communication-thread', methods=['GET'])
-@login_required
-def get_customer_communication_thread(customer_id):
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            SELECT customer_name, email, phone 
-            FROM customers 
-            WHERE id = ? AND user_id = ?
-        """, (customer_id, current_user.id))
-        
-        customer = cursor.fetchone()
-        if not customer:
-            conn.close()
-            return jsonify({"error": "Customer not found"}), 404
-        
-        cursor.execute("""
-            SELECT 
-                ic.id,
-                ic.invoice_id,
-                i.invoice_number,
-                ic.communication_type,
-                ic.subject,
-                ic.message_body,
-                ic.sent_at,
-                ic.is_read_by_customer,
-                ic.read_at,
-                ic.customer_replied,
-                ic.reply_at,
-                ic.reply_body,
-                i.total_amount,
-                i.status as invoice_status
-            FROM invoice_communications ic
-            JOIN invoices i ON ic.invoice_id = i.id
-            WHERE ic.customer_id = ? AND i.user_id = ?
-            ORDER BY ic.sent_at DESC
-        """, (customer_id, current_user.id))
-        
-        communications = []
-        for row in cursor.fetchall():
-            communications.append({
-                "id": row[0],
-                "invoice_id": row[1],
-                "invoice_number": row[2],
-                "customer_id": customer_id,
-                "customer_name": customer[0],
-                "customer_email": customer[1],
-                "communication_type": row[3],
-                "subject": row[4],
-                "message_body": row[5],
-                "sent_at": row[6].isoformat() if row[6] else None,
-                "is_read_by_customer": bool(row[7]),
-                "read_at": row[8].isoformat() if row[8] else None,
-                "customer_replied": bool(row[9]),
-                "reply_at": row[10].isoformat() if row[10] else None,
-                "reply_body": row[11],
-                "invoice_amount": float(row[12]) if row[12] else 0,
-                "invoice_status": row[13]
-            })
-        
-        conn.close()
-        
-        total_communications = len(communications)
-        emails_sent = sum(1 for c in communications if c["communication_type"] in ["sent", "follow_up"])
-        customer_replies = sum(1 for c in communications if c["customer_replied"] or c["communication_type"] == "customer_reply")
-        
-        return jsonify({
-            "customer_id": customer_id,
-            "customer_name": customer[0],
-            "customer_email": customer[1],
-            "customer_phone": customer[2],
-            "communications": communications,
-            "summary": {
-                "total_communications": total_communications,
-                "emails_sent": emails_sent,
-                "customer_replies": customer_replies,
-                "response_rate": round((customer_replies / emails_sent * 100) if emails_sent > 0 else 0, 1)
-            }
-        }), 200
-        
-    except Exception as e:
-        print(f"Error getting customer thread: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
-
-def send_customer_email_message(to_email, to_name, subject, body, invoice_number=None, invoice_amount=None, invoice_status=None, is_reply=False, tracking_url=None, amount_label="Amount"):
-    try:
-        if not to_email:
-            return False
-        
-        if '@' not in str(to_email) or '.' not in str(to_email):
-            return False
-        
-        to_email = str(to_email).strip().lower()
-        
-        tracking_pixel = ""
-        if tracking_url:
-            tracking_pixel = f'<img src="{tracking_url}" width="1" height="1" alt="" style="display:none;width:1px;height:1px;border:0;" />'
-
-        if invoice_number and not is_reply:
-            html_content = f"""
-            <!DOCTYPE html>
-            <html>
-            <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                <div style="background: #f8f9fa; padding: 20px; border-radius: 10px;">
-                    <h2 style="color: #3498db;">Broadband LifeStyle</h2>
-                    <p>Dear {to_name},</p>
-                    <p>{body}</p>
-                    <div style="background: white; padding: 15px; border-radius: 8px; margin: 15px 0;">
-                        <p><strong>Invoice #{invoice_number}</strong></p>
-                        <p>{amount_label}: R{invoice_amount:,.2f}</p>
-                        <p>Status: {invoice_status.upper()}</p>
-                    </div>
-                    <p>Best regards,<br>Broadband LifeStyle Team</p>
-                    {tracking_pixel}
-                </div>
-            </body>
-            </html>
-            """
-        else:
-            html_content = f"""
-            <!DOCTYPE html>
-            <html>
-            <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                <div style="background: #f8f9fa; padding: 20px; border-radius: 10px;">
-                    <h2 style="color: #3498db;">Broadband LifeStyle</h2>
-                    <p>Dear {to_name},</p>
-                    <p>{body}</p>
-                    <p>Best regards,<br>Broadband LifeStyle Team</p>
-                    {tracking_pixel}
-                </div>
-            </body>
-            </html>
-            """
-        
-        msg = MIMEMultipart('alternative')
-        msg["From"] = EMAIL_ADDRESS
-        msg["To"] = to_email
-        msg["Subject"] = subject
-        msg.attach(MIMEText(html_content, "html"))
-        
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()
-            server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-            server.sendmail(EMAIL_ADDRESS, to_email, msg.as_string())
-        
-        print(f"Email sent successfully to {to_email}")
-        return True
-        
-    except Exception as e:
-        print(f"Error sending email to {to_email}: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
-
-def decode_mime_header(value):
-    if not value:
-        return ""
-    parts = []
-    for text, encoding in decode_header(value):
-        if isinstance(text, bytes):
-            parts.append(text.decode(encoding or "utf-8", errors="replace"))
-        else:
-            parts.append(text)
-    return "".join(parts).strip()
-
-def get_email_text_body(message):
-    if message.is_multipart():
-        for part in message.walk():
-            content_type = part.get_content_type()
-            content_disposition = str(part.get("Content-Disposition") or "")
-            if content_type == "text/plain" and "attachment" not in content_disposition:
-                payload = part.get_payload(decode=True)
-                if payload:
-                    return payload.decode(part.get_content_charset() or "utf-8", errors="replace")
-        for part in message.walk():
-            if part.get_content_type() == "text/html":
-                payload = part.get_payload(decode=True)
-                if payload:
-                    html = payload.decode(part.get_content_charset() or "utf-8", errors="replace")
-                    return re.sub(r"<[^>]+>", " ", html)
-
-    payload = message.get_payload(decode=True)
-    if payload:
-        return payload.decode(message.get_content_charset() or "utf-8", errors="replace")
-    return str(message.get_payload() or "")
-
-def clean_inbound_reply_body(body):
-    body = re.sub(r"\r\n?", "\n", body or "").strip()
-    cut_patterns = [
-        r"\nOn .+ wrote:\s*$",
-        r"\n-{2,}\s*Original Message\s*-{2,}",
-        r"\nFrom:\s.+\nSent:\s.+\nTo:\s.+",
-        r"\n> .+"
-    ]
-    cut_index = len(body)
-    for pattern in cut_patterns:
-        match = re.search(pattern, body, flags=re.IGNORECASE | re.DOTALL)
-        if match:
-            cut_index = min(cut_index, match.start())
-    return body[:cut_index].strip()[:4000]
-
-def message_already_processed(cursor, user_id, message_id):
-    message_id = str(message_id or "")[:300]
-    cursor.execute(
-        "SELECT id FROM email_sync_log WHERE user_id = ? AND message_id = ?",
-        (user_id, message_id)
-    )
-    return cursor.fetchone() is not None
-
-def find_matching_communication(cursor, user_id, sender_email, subject):
-    sender_email = (sender_email or "").lower()
-    subject_normalized = re.sub(r"^(re|fw|fwd):\s*", "", subject or "", flags=re.IGNORECASE).strip().lower()
-    invoice_number_match = re.search(r"([A-Z]{2,}[- ]?\d{3,}|\d{4,})", subject or "", flags=re.IGNORECASE)
-    invoice_number_token = invoice_number_match.group(1).replace(" ", "-").lower() if invoice_number_match else ""
-
-    cursor.execute("""
-        SELECT TOP 50
-            ic.id,
-            ic.invoice_id,
-            ic.customer_id,
-            ic.subject,
-            i.invoice_number
-        FROM invoice_communications ic
-        JOIN invoices i ON ic.invoice_id = i.id
-        JOIN customers c ON ic.customer_id = c.id
-        WHERE i.user_id = ?
-          AND LOWER(c.email) = ?
-          AND ic.communication_type IN ('sent', 'follow_up', 'reply')
-        ORDER BY ic.sent_at DESC
-    """, (user_id, sender_email))
-
-    candidates = cursor.fetchall()
-    if not candidates:
-        return None
-
-    for row in candidates:
-        candidate_subject = re.sub(r"^(re|fw|fwd):\s*", "", row[3] or "", flags=re.IGNORECASE).strip().lower()
-        invoice_number = (row[4] or "").lower()
-        if subject_normalized and (subject_normalized in candidate_subject or candidate_subject in subject_normalized):
-            return row
-        if invoice_number_token and invoice_number and invoice_number_token in invoice_number:
-            return row
-
-    return candidates[0]
-
-def record_inbound_reply(cursor, user_id, message_id, sender_email, subject, body, received_at):
-    message_id = str(message_id or "")[:300]
-    match = find_matching_communication(cursor, user_id, sender_email, subject)
-    if not match:
-        cursor.execute("""
-            INSERT INTO email_sync_log (user_id, message_id, sender_email, subject, received_at)
-            VALUES (?, ?, ?, ?, ?)
-        """, (user_id, message_id, sender_email, subject, received_at))
-        return False
-
-    communication_id, invoice_id, customer_id = match[0], match[1], match[2]
-    cursor.execute("""
-        UPDATE invoice_communications
-        SET customer_replied = 1,
-            reply_at = COALESCE(reply_at, ?),
-            reply_body = CASE
-                WHEN reply_body IS NULL OR LTRIM(RTRIM(reply_body)) = '' THEN ?
-                ELSE reply_body
-            END
-        WHERE id = ?
-    """, (received_at, body, communication_id))
-
-    cursor.execute("""
-        INSERT INTO invoice_communications
-        (invoice_id, customer_id, communication_type, subject, message_body, sent_at, created_by)
-        VALUES (?, ?, 'customer_reply', ?, ?, ?, ?)
-    """, (invoice_id, customer_id, subject, body, received_at, user_id))
-
-    cursor.execute("""
-        UPDATE invoice_follow_ups
-        SET customer_responded = 1,
-            responded_at = COALESCE(responded_at, ?)
-        WHERE invoice_id = ?
-    """, (received_at, invoice_id))
-
-    cursor.execute("""
-        INSERT INTO email_sync_log
-        (user_id, message_id, invoice_id, communication_id, sender_email, subject, received_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (user_id, message_id, invoice_id, communication_id, sender_email, subject, received_at))
-    return True
-
-def sync_inbox_for_user(user_id, days_back=14, limit=50):
-    if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
-        raise Exception("Email settings are missing. Configure EMAIL_ADDRESS and EMAIL_PASSWORD in Flask/.env.")
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    ensure_email_sync_table(cursor)
-    conn.commit()
-
-    matched = 0
-    processed = 0
-    skipped = 0
-
-    mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
-    try:
-        mail.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-        mail.select("INBOX")
-        since_date = (datetime.now() - timedelta(days=days_back)).strftime("%d-%b-%Y")
-        status, data = mail.search(None, "SINCE", since_date)
-        if status != "OK":
-            raise Exception("Unable to search inbox")
-
-        message_ids = data[0].split()[-limit:]
-        for imap_id in message_ids:
-            status, msg_data = mail.fetch(imap_id, "(RFC822)")
-            if status != "OK" or not msg_data:
-                skipped += 1
-                continue
-
-            raw_message = msg_data[0][1]
-            message = message_from_bytes(raw_message)
-            message_id = (message.get("Message-ID") or f"imap-{imap_id.decode()}").strip()[:300]
-            sender_name, sender_email = parseaddr(message.get("From") or "")
-            sender_email = sender_email.lower()
-            if sender_email == (EMAIL_ADDRESS or "").lower():
-                skipped += 1
-                continue
-            if message_already_processed(cursor, user_id, message_id):
-                skipped += 1
-                continue
-
-            subject = decode_mime_header(message.get("Subject"))
-            try:
-                parsed_date = parsedate_to_datetime(message.get("Date"))
-                received_at = parsed_date.replace(tzinfo=None) if parsed_date else datetime.now()
-            except Exception:
-                received_at = datetime.now()
-
-            body = clean_inbound_reply_body(get_email_text_body(message))
-            if not body:
-                skipped += 1
-                continue
-
-            processed += 1
-            if record_inbound_reply(cursor, user_id, message_id, sender_email, subject, body, received_at):
-                matched += 1
-
-        conn.commit()
-        return {"processed": processed, "matched": matched, "skipped": skipped}
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        try:
-            mail.logout()
-        except Exception:
-            pass
-        conn.close()
 
 # ============================================
 # REPORTS
@@ -6261,6 +4891,993 @@ def get_customer_report():
         "total_customers": len(customers)
     }), 200
 
+# ==================== INVOICE COMMUNICATION ENDPOINTS ====================
+
+def communication_row_to_dict(row):
+    return {
+        "id": row[0],
+        "invoice_id": row[1],
+        "invoice_number": row[2],
+        "customer_id": row[3],
+        "customer_name": row[4],
+        "customer_email": row[5],
+        "communication_type": row[6],
+        "subject": row[7],
+        "message_body": row[8],
+        "sent_at": row[9].isoformat() if row[9] else None,
+        "is_read_by_customer": bool(row[10]),
+        "read_at": row[11].isoformat() if row[11] else None,
+        "customer_replied": bool(row[12]),
+        "reply_at": row[13].isoformat() if row[13] else None,
+        "reply_body": row[14]
+    }
+
+def communication_filter_clause(filter_name):
+    if filter_name == "sent":
+        return "AND ic.communication_type IN ('sent', 'follow_up', 'reply')"
+    if filter_name == "opened":
+        return "AND ic.is_read_by_customer = 1"
+    if filter_name == "replied":
+        return """
+            AND (
+                ic.communication_type = 'customer_reply'
+                OR (ic.customer_replied = 1 AND ic.reply_body IS NOT NULL)
+            )
+        """
+    return ""
+
+@app.route('/api/invoices/communications', methods=['GET'])
+@login_required
+def get_all_invoice_communications():
+    try:
+        filter_name = (request.args.get('filter') or 'all').lower()
+        if filter_name not in ['all', 'sent', 'opened', 'replied']:
+            return jsonify({"error": "Invalid communication filter"}), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(f"""
+            SELECT
+                ic.id,
+                ic.invoice_id,
+                i.invoice_number,
+                ic.customer_id,
+                c.customer_name,
+                c.email as customer_email,
+                ic.communication_type,
+                ic.subject,
+                ic.message_body,
+                ic.sent_at,
+                ic.is_read_by_customer,
+                ic.read_at,
+                ic.customer_replied,
+                ic.reply_at,
+                ic.reply_body
+            FROM invoice_communications ic
+            JOIN invoices i ON ic.invoice_id = i.id
+            JOIN customers c ON ic.customer_id = c.id
+            WHERE i.user_id = ?
+            {communication_filter_clause(filter_name)}
+            ORDER BY COALESCE(ic.reply_at, ic.sent_at) DESC
+        """, (current_user.id,))
+
+        communications = [communication_row_to_dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return jsonify(communications), 200
+
+    except Exception as e:
+        print(f"Error getting all communications: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/invoices/<int:invoice_id>/communications', methods=['GET'])
+@login_required
+def get_invoice_communications(invoice_id):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT 
+                ic.id,
+                ic.invoice_id,
+                i.invoice_number,
+                ic.customer_id,
+                c.customer_name,
+                c.email as customer_email,
+                ic.communication_type,
+                ic.subject,
+                ic.message_body,
+                ic.sent_at,
+                ic.is_read_by_customer,
+                ic.read_at,
+                ic.customer_replied,
+                ic.reply_at,
+                ic.reply_body
+            FROM invoice_communications ic
+            JOIN invoices i ON ic.invoice_id = i.id
+            JOIN customers c ON ic.customer_id = c.id
+            WHERE ic.invoice_id = ? AND i.user_id = ?
+            ORDER BY ic.sent_at DESC
+        """, (invoice_id, current_user.id))
+        
+        communications = [communication_row_to_dict(row) for row in cursor.fetchall()]
+        
+        conn.close()
+        return jsonify(communications), 200
+        
+    except Exception as e:
+        print(f"Error getting communications: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/invoices/communications/<int:communication_id>/open.gif', methods=['GET'])
+def track_communication_open(communication_id):
+    pixel = (
+        b'GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!'
+        b'\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01'
+        b'\x00\x00\x02\x02D\x01\x00;'
+    )
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE invoice_communications
+            SET is_read_by_customer = 1,
+                read_at = COALESCE(read_at, GETDATE())
+            WHERE id = ?
+        """, (communication_id,))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Error tracking communication open: {e}")
+
+    response = make_response(pixel)
+    response.headers['Content-Type'] = 'image/gif'
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    return response
+
+@app.route('/api/invoices/send-email', methods=['POST'])
+@login_required
+def send_invoice_email():
+    try:
+        data = request.get_json()
+        invoice_id = data.get('invoice_id')
+        subject = data.get('subject')
+        message = data.get('message')
+        is_follow_up = data.get('is_follow_up', False)
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT 
+                i.id, 
+                i.invoice_number, 
+                i.total_amount, 
+                i.balance_due,
+                i.status,
+                c.id as customer_id, 
+                c.customer_name, 
+                c.email as customer_email
+            FROM invoices i
+            JOIN customers c ON i.customer_id = c.id
+            WHERE i.id = ? AND i.user_id = ?
+        """, (invoice_id, current_user.id))
+        
+        invoice = cursor.fetchone()
+        if not invoice:
+            conn.close()
+            return jsonify({"error": "Invoice not found"}), 404
+        
+        invoice_id_db = invoice[0]
+        invoice_number = invoice[1]
+        invoice_amount = float(invoice[2]) if invoice[2] else 0
+        balance_due = float(invoice[3]) if invoice[3] else 0
+        invoice_status = invoice[4]
+        customer_id = invoice[5]
+        customer_name = invoice[6]
+        customer_email = invoice[7]
+        
+        if not customer_email or '@' not in customer_email:
+            conn.close()
+            return jsonify({
+                "success": False,
+                "error": f"Customer '{customer_name}' has an invalid email address: '{customer_email}'. Please update the customer's email before sending."
+            }), 400
+        
+        cursor.execute("""
+            INSERT INTO invoice_communications 
+            (invoice_id, customer_id, communication_type, subject, message_body, sent_at, created_by)
+            OUTPUT INSERTED.id
+            VALUES (?, ?, ?, ?, ?, GETDATE(), ?)
+        """, (invoice_id, customer_id, 'follow_up' if is_follow_up else 'sent',
+              subject, message, current_user.id))
+        communication_id = cursor.fetchone()[0]
+        conn.commit()
+
+        tracking_url = url_for(
+            'track_communication_open',
+            communication_id=communication_id,
+            _external=True
+        )
+
+        email_sent = send_customer_email_message(
+            to_email=customer_email,
+            to_name=customer_name,
+            subject=subject,
+            body=message,
+            invoice_number=invoice_number,
+            invoice_amount=balance_due if is_follow_up else invoice_amount,
+            invoice_status=invoice_status,
+            tracking_url=tracking_url,
+            amount_label="Balance Due" if is_follow_up else "Amount"
+        )
+        
+        if email_sent:
+            if is_follow_up:
+                cursor.execute("""
+                    IF EXISTS (SELECT 1 FROM invoice_follow_ups WHERE invoice_id = ?)
+                        UPDATE invoice_follow_ups
+                        SET message_sent = 1,
+                            message_sent_at = GETDATE()
+                        WHERE invoice_id = ?
+                    ELSE
+                        INSERT INTO invoice_follow_ups
+                        (invoice_id, follow_up_date, follow_up_type, message_sent, message_sent_at, completed)
+                        VALUES (?, GETDATE(), 'standard', 1, GETDATE(), 0)
+                """, (invoice_id, invoice_id, invoice_id))
+            
+            conn.commit()
+        else:
+            cursor.execute("DELETE FROM invoice_communications WHERE id = ?", (communication_id,))
+            conn.commit()
+        
+        conn.close()
+        
+        return jsonify({
+            "success": email_sent,
+            "message": "Email sent successfully" if email_sent else "Failed to send email",
+            "sent_to": customer_email
+        }), 200
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/invoices/send-reply', methods=['POST'])
+@login_required
+def send_reply():
+    try:
+        data = request.get_json()
+        communication_id = data.get('communication_id')
+        subject = data.get('subject')
+        message = data.get('message')
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT ic.customer_id, ic.invoice_id, c.customer_name, c.email
+            FROM invoice_communications ic
+            JOIN customers c ON ic.customer_id = c.id
+            WHERE ic.id = ?
+        """, (communication_id,))
+        
+        comm = cursor.fetchone()
+        if not comm:
+            conn.close()
+            return jsonify({"error": "Communication not found"}), 404
+        
+        customer_id, invoice_id, customer_name, customer_email = comm
+        
+        email_sent = send_customer_email_message(
+            to_email=customer_email,
+            to_name=customer_name,
+            subject=f"Re: {subject}",
+            body=message,
+            is_reply=True
+        )
+        
+        if email_sent:
+            cursor.execute("""
+                UPDATE invoice_communications
+                SET customer_replied = 1, reply_at = GETDATE(), reply_body = ?
+                WHERE id = ?
+            """, (message, communication_id))
+            
+            cursor.execute("""
+                INSERT INTO invoice_communications 
+                (invoice_id, customer_id, communication_type, subject, message_body, sent_at, created_by)
+                VALUES (?, ?, 'reply', ?, ?, GETDATE(), ?)
+            """, (invoice_id, customer_id, subject, message, current_user.id))
+            
+            conn.commit()
+        
+        conn.close()
+        
+        return jsonify({
+            "success": email_sent,
+            "message": "Reply sent successfully" if email_sent else "Failed to send reply"
+        }), 200
+        
+    except Exception as e:
+        print(f"Error sending reply: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/invoices/communications/summary', methods=['GET'])
+@login_required
+def get_communication_summary():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT COUNT(*)
+            FROM invoice_communications ic
+            JOIN invoices i ON ic.invoice_id = i.id
+            WHERE i.user_id = ?
+              AND ic.communication_type IN ('sent', 'follow_up', 'reply')
+        """, (current_user.id,))
+        total_sent = cursor.fetchone()[0] or 0
+        
+        cursor.execute("""
+            SELECT COUNT(*)
+            FROM invoice_communications ic
+            JOIN invoices i ON ic.invoice_id = i.id
+            WHERE i.user_id = ? AND ic.is_read_by_customer = 1
+        """, (current_user.id,))
+        opened = cursor.fetchone()[0] or 0
+        
+        cursor.execute("""
+            SELECT COUNT(*)
+            FROM invoice_communications ic
+            JOIN invoices i ON ic.invoice_id = i.id
+            WHERE i.user_id = ?
+              AND (
+                  ic.communication_type = 'customer_reply'
+                  OR (ic.customer_replied = 1 AND ic.reply_body IS NOT NULL)
+              )
+        """, (current_user.id,))
+        replied = cursor.fetchone()[0] or 0
+        
+        cursor.execute("""
+            SELECT COUNT(*)
+            FROM invoices i
+            LEFT JOIN invoice_follow_ups f ON i.id = f.invoice_id
+            WHERE i.user_id = ?
+              AND i.status IN ('pending', 'overdue', 'sent')
+              AND i.balance_due > 0
+              AND (f.completed IS NULL OR f.completed = 0)
+        """, (current_user.id,))
+        pending_follow_ups = cursor.fetchone()[0] or 0
+
+        cursor.execute("""
+            SELECT TOP 5
+                i.id,
+                i.invoice_number,
+                c.customer_name,
+                COALESCE(ic.reply_at, ic.sent_at) as reply_at,
+                COALESCE(ic.reply_body, ic.message_body) as reply_body
+            FROM invoice_communications ic
+            JOIN invoices i ON ic.invoice_id = i.id
+            JOIN customers c ON ic.customer_id = c.id
+            WHERE i.user_id = ?
+              AND (
+                  (ic.customer_replied = 1 AND ic.reply_body IS NOT NULL)
+                  OR ic.communication_type = 'customer_reply'
+              )
+            ORDER BY COALESCE(ic.reply_at, ic.sent_at) DESC
+        """, (current_user.id,))
+        recent_replies = []
+        for row in cursor.fetchall():
+            recent_replies.append({
+                "invoice_id": row[0],
+                "invoice_number": row[1],
+                "customer_name": row[2],
+                "reply_at": row[3].isoformat() if row[3] else None,
+                "reply_body": row[4]
+            })
+        
+        conn.close()
+        
+        return jsonify({
+            "total_sent": total_sent,
+            "opened": opened,
+            "replied": replied,
+            "pending_follow_ups": pending_follow_ups,
+            "recent_replies": recent_replies
+        }), 200
+        
+    except Exception as e:
+        print(f"Error getting summary: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/invoices/communications/sync-inbox', methods=['POST'])
+@login_required
+def sync_communications_inbox():
+    try:
+        data = request.get_json(silent=True) or {}
+        days_back = int(data.get("days_back", 14))
+        limit = int(data.get("limit", 50))
+        result = sync_inbox_for_user(current_user.id, days_back=days_back, limit=limit)
+        return jsonify({
+            "success": True,
+            "message": f"Synced inbox. Matched {result['matched']} customer replies.",
+            **result
+        }), 200
+    except Exception as e:
+        print(f"Error syncing inbox: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/invoices/communications/inbound-webhook', methods=['POST'])
+def inbound_communications_webhook():
+    try:
+        if INBOUND_WEBHOOK_SECRET:
+            provided_secret = request.headers.get("X-InvoiceApp-Webhook-Secret") or request.args.get("secret")
+            if provided_secret != INBOUND_WEBHOOK_SECRET:
+                return jsonify({"error": "Unauthorized"}), 401
+
+        data = request.get_json() or {}
+        user_id = data.get("user_id")
+        sender_email = (data.get("from_email") or data.get("sender_email") or "").strip().lower()
+        subject = data.get("subject") or ""
+        body = clean_inbound_reply_body(data.get("text") or data.get("body") or data.get("message") or "")
+        message_id = str(data.get("message_id") or f"webhook-{secrets.token_hex(16)}")[:300]
+
+        if not user_id or not sender_email or not body:
+            return jsonify({"error": "user_id, from_email, and body are required"}), 400
+
+        received_at = datetime.now()
+        if data.get("received_at"):
+            try:
+                received_at = datetime.fromisoformat(str(data["received_at"]).replace("Z", "+00:00")).replace(tzinfo=None)
+            except Exception:
+                received_at = datetime.now()
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        if message_already_processed(cursor, user_id, message_id):
+            conn.close()
+            return jsonify({"success": True, "matched": False, "message": "Message already processed"}), 200
+
+        matched = record_inbound_reply(cursor, user_id, message_id, sender_email, subject, body, received_at)
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            "success": True,
+            "matched": matched,
+            "message": "Inbound reply recorded" if matched else "Inbound email stored but no matching invoice communication was found"
+        }), 200
+    except Exception as e:
+        print(f"Error processing inbound webhook: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/invoices/follow-ups/pending', methods=['GET'])
+@login_required
+def get_pending_follow_ups():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT 
+                i.id,
+                i.invoice_number,
+                c.id as customer_id,
+                c.customer_name,
+                c.email as customer_email,
+                c.phone as customer_phone,
+                i.total_amount,
+                i.balance_due,
+                i.due_date,
+                i.status,
+                DATEDIFF(day, i.due_date, GETDATE()) as days_overdue,
+                CASE 
+                    WHEN DATEDIFF(day, i.due_date, GETDATE()) > 30 THEN 'critical'
+                    WHEN DATEDIFF(day, i.due_date, GETDATE()) > 14 THEN 'urgent'
+                    WHEN DATEDIFF(day, i.due_date, GETDATE()) > 7 THEN 'overdue'
+                    ELSE 'standard'
+                END as follow_up_type,
+                ISNULL(f.completed, 0) as completed,
+                ISNULL(f.message_sent, 0) as message_sent,
+                ISNULL(f.customer_responded, 0) as customer_responded,
+                f.message_sent_at,
+                f.responded_at,
+                f.notes
+            FROM invoices i
+            JOIN customers c ON i.customer_id = c.id
+            LEFT JOIN invoice_follow_ups f ON i.id = f.invoice_id
+            WHERE i.user_id = ? 
+            AND i.status IN ('pending', 'overdue', 'sent')
+            AND i.balance_due > 0
+            AND (f.completed IS NULL OR f.completed = 0)
+            ORDER BY i.due_date ASC
+        """, (current_user.id,))
+        
+        follow_ups = []
+        for row in cursor.fetchall():
+            follow_ups.append({
+                "id": row[0],
+                "invoice_id": row[0],
+                "invoice_number": row[1],
+                "customer_id": row[2],
+                "customer_name": row[3],
+                "customer_email": row[4],
+                "customer_phone": row[5],
+                "total_amount": float(row[6]) if row[6] else 0,
+                "balance_due": float(row[7]) if row[7] else 0,
+                "follow_up_date": row[8].isoformat() if row[8] else None,
+                "status": row[9],
+                "days_overdue": row[10] if row[10] else 0,
+                "follow_up_type": row[11] if row[11] else 'standard',
+                "completed": bool(row[12]) if row[12] is not None else False,
+                "message_sent": bool(row[13]) if row[13] is not None else False,
+                "customer_responded": bool(row[14]) if row[14] is not None else False,
+                "message_sent_at": row[15].isoformat() if row[15] else None,
+                "responded_at": row[16].isoformat() if row[16] else None,
+                "notes": row[17]
+            })
+        
+        conn.close()
+        return jsonify(follow_ups), 200
+        
+    except Exception as e:
+        print(f"Error getting follow-ups: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/invoices/follow-ups/<int:follow_up_id>/mark-sent', methods=['POST'])
+@login_required
+def mark_follow_up_sent(follow_up_id):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT f.id, f.invoice_id, f.message_sent
+            FROM invoice_follow_ups f
+            JOIN invoices i ON f.invoice_id = i.id
+            WHERE f.id = ? AND i.user_id = ?
+        """, (follow_up_id, current_user.id))
+        
+        follow_up = cursor.fetchone()
+        
+        if not follow_up:
+            conn.close()
+            return jsonify({"error": "Follow-up not found"}), 404
+        
+        if follow_up[2]:
+            conn.close()
+            return jsonify({"error": "Follow-up already marked as sent"}), 400
+        
+        cursor.execute("""
+            UPDATE invoice_follow_ups
+            SET message_sent = 1,
+                message_sent_at = GETDATE()
+            WHERE id = ?
+        """, (follow_up_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "message": "Follow-up marked as sent successfully"
+        }), 200
+        
+    except Exception as e:
+        print(f"Error marking follow-up as sent: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/invoices/follow-ups/<int:follow_up_id>/complete', methods=['POST'])
+@login_required
+def complete_follow_up(follow_up_id):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT f.id, f.invoice_id, f.completed
+            FROM invoice_follow_ups f
+            JOIN invoices i ON f.invoice_id = i.id
+            WHERE f.id = ? AND i.user_id = ?
+        """, (follow_up_id, current_user.id))
+        
+        follow_up = cursor.fetchone()
+        
+        if not follow_up:
+            conn.close()
+            return jsonify({"error": "Follow-up not found"}), 404
+        
+        if follow_up[2]:
+            conn.close()
+            return jsonify({"error": "Follow-up already completed"}), 400
+        
+        cursor.execute("""
+            UPDATE invoice_follow_ups
+            SET completed = 1
+            WHERE id = ?
+        """, (follow_up_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "message": "Follow-up marked as completed successfully"
+        }), 200
+        
+    except Exception as e:
+        print(f"Error completing follow-up: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/customers/<int:customer_id>/communication-thread', methods=['GET'])
+@login_required
+def get_customer_communication_thread(customer_id):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT customer_name, email, phone 
+            FROM customers 
+            WHERE id = ? AND user_id = ?
+        """, (customer_id, current_user.id))
+        
+        customer = cursor.fetchone()
+        if not customer:
+            conn.close()
+            return jsonify({"error": "Customer not found"}), 404
+        
+        cursor.execute("""
+            SELECT 
+                ic.id,
+                ic.invoice_id,
+                i.invoice_number,
+                ic.communication_type,
+                ic.subject,
+                ic.message_body,
+                ic.sent_at,
+                ic.is_read_by_customer,
+                ic.read_at,
+                ic.customer_replied,
+                ic.reply_at,
+                ic.reply_body,
+                i.total_amount,
+                i.status as invoice_status
+            FROM invoice_communications ic
+            JOIN invoices i ON ic.invoice_id = i.id
+            WHERE ic.customer_id = ? AND i.user_id = ?
+            ORDER BY ic.sent_at DESC
+        """, (customer_id, current_user.id))
+        
+        communications = []
+        for row in cursor.fetchall():
+            communications.append({
+                "id": row[0],
+                "invoice_id": row[1],
+                "invoice_number": row[2],
+                "customer_id": customer_id,
+                "customer_name": customer[0],
+                "customer_email": customer[1],
+                "communication_type": row[3],
+                "subject": row[4],
+                "message_body": row[5],
+                "sent_at": row[6].isoformat() if row[6] else None,
+                "is_read_by_customer": bool(row[7]),
+                "read_at": row[8].isoformat() if row[8] else None,
+                "customer_replied": bool(row[9]),
+                "reply_at": row[10].isoformat() if row[10] else None,
+                "reply_body": row[11],
+                "invoice_amount": float(row[12]) if row[12] else 0,
+                "invoice_status": row[13]
+            })
+        
+        conn.close()
+        
+        total_communications = len(communications)
+        emails_sent = sum(1 for c in communications if c["communication_type"] in ["sent", "follow_up"])
+        customer_replies = sum(1 for c in communications if c["customer_replied"] or c["communication_type"] == "customer_reply")
+        
+        return jsonify({
+            "customer_id": customer_id,
+            "customer_name": customer[0],
+            "customer_email": customer[1],
+            "customer_phone": customer[2],
+            "communications": communications,
+            "summary": {
+                "total_communications": total_communications,
+                "emails_sent": emails_sent,
+                "customer_replies": customer_replies,
+                "response_rate": round((customer_replies / emails_sent * 100) if emails_sent > 0 else 0, 1)
+            }
+        }), 200
+        
+    except Exception as e:
+        print(f"Error getting customer thread: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+def send_customer_email_message(to_email, to_name, subject, body, invoice_number=None, invoice_amount=None, invoice_status=None, is_reply=False, tracking_url=None, amount_label="Amount"):
+    try:
+        if not to_email:
+            return False
+        
+        if '@' not in str(to_email) or '.' not in str(to_email):
+            return False
+        
+        to_email = str(to_email).strip().lower()
+        
+        tracking_pixel = ""
+        if tracking_url:
+            tracking_pixel = f'<img src="{tracking_url}" width="1" height="1" alt="" style="display:none;width:1px;height:1px;border:0;" />'
+
+        if invoice_number and not is_reply:
+            html_content = f"""
+            <!DOCTYPE html>
+            <html>
+            <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <div style="background: #f8f9fa; padding: 20px; border-radius: 10px;">
+                    <h2 style="color: #3498db;">Broadband LifeStyle</h2>
+                    <p>Dear {to_name},</p>
+                    <p>{body}</p>
+                    <div style="background: white; padding: 15px; border-radius: 8px; margin: 15px 0;">
+                        <p><strong>Invoice #{invoice_number}</strong></p>
+                        <p>{amount_label}: R{invoice_amount:,.2f}</p>
+                        <p>Status: {invoice_status.upper()}</p>
+                    </div>
+                    <p>Best regards,<br>Broadband LifeStyle Team</p>
+                    {tracking_pixel}
+                </div>
+            </body>
+            </html>
+            """
+        else:
+            html_content = f"""
+            <!DOCTYPE html>
+            <html>
+            <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <div style="background: #f8f9fa; padding: 20px; border-radius: 10px;">
+                    <h2 style="color: #3498db;">Broadband LifeStyle</h2>
+                    <p>Dear {to_name},</p>
+                    <p>{body}</p>
+                    <p>Best regards,<br>Broadband LifeStyle Team</p>
+                    {tracking_pixel}
+                </div>
+            </body>
+            </html>
+            """
+        
+        msg = MIMEMultipart('alternative')
+        msg["From"] = EMAIL_ADDRESS
+        msg["To"] = to_email
+        msg["Subject"] = subject
+        msg.attach(MIMEText(html_content, "html"))
+        
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()
+            server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+            server.sendmail(EMAIL_ADDRESS, to_email, msg.as_string())
+        
+        print(f"Email sent successfully to {to_email}")
+        return True
+        
+    except Exception as e:
+        print(f"Error sending email to {to_email}: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def decode_mime_header(value):
+    if not value:
+        return ""
+    parts = []
+    for text, encoding in decode_header(value):
+        if isinstance(text, bytes):
+            parts.append(text.decode(encoding or "utf-8", errors="replace"))
+        else:
+            parts.append(text)
+    return "".join(parts).strip()
+
+def get_email_text_body(message):
+    if message.is_multipart():
+        for part in message.walk():
+            content_type = part.get_content_type()
+            content_disposition = str(part.get("Content-Disposition") or "")
+            if content_type == "text/plain" and "attachment" not in content_disposition:
+                payload = part.get_payload(decode=True)
+                if payload:
+                    return payload.decode(part.get_content_charset() or "utf-8", errors="replace")
+        for part in message.walk():
+            if part.get_content_type() == "text/html":
+                payload = part.get_payload(decode=True)
+                if payload:
+                    html = payload.decode(part.get_content_charset() or "utf-8", errors="replace")
+                    return re.sub(r"<[^>]+>", " ", html)
+
+    payload = message.get_payload(decode=True)
+    if payload:
+        return payload.decode(message.get_content_charset() or "utf-8", errors="replace")
+    return str(message.get_payload() or "")
+
+def clean_inbound_reply_body(body):
+    body = re.sub(r"\r\n?", "\n", body or "").strip()
+    cut_patterns = [
+        r"\nOn .+ wrote:\s*$",
+        r"\n-{2,}\s*Original Message\s*-{2,}",
+        r"\nFrom:\s.+\nSent:\s.+\nTo:\s.+",
+        r"\n> .+"
+    ]
+    cut_index = len(body)
+    for pattern in cut_patterns:
+        match = re.search(pattern, body, flags=re.IGNORECASE | re.DOTALL)
+        if match:
+            cut_index = min(cut_index, match.start())
+    return body[:cut_index].strip()[:4000]
+
+def message_already_processed(cursor, user_id, message_id):
+    message_id = str(message_id or "")[:300]
+    cursor.execute(
+        "SELECT id FROM email_sync_log WHERE user_id = ? AND message_id = ?",
+        (user_id, message_id)
+    )
+    return cursor.fetchone() is not None
+
+def find_matching_communication(cursor, user_id, sender_email, subject):
+    sender_email = (sender_email or "").lower()
+    subject_normalized = re.sub(r"^(re|fw|fwd):\s*", "", subject or "", flags=re.IGNORECASE).strip().lower()
+    invoice_number_match = re.search(r"([A-Z]{2,}[- ]?\d{3,}|\d{4,})", subject or "", flags=re.IGNORECASE)
+    invoice_number_token = invoice_number_match.group(1).replace(" ", "-").lower() if invoice_number_match else ""
+
+    cursor.execute("""
+        SELECT TOP 50
+            ic.id,
+            ic.invoice_id,
+            ic.customer_id,
+            ic.subject,
+            i.invoice_number
+        FROM invoice_communications ic
+        JOIN invoices i ON ic.invoice_id = i.id
+        JOIN customers c ON ic.customer_id = c.id
+        WHERE i.user_id = ?
+          AND LOWER(c.email) = ?
+          AND ic.communication_type IN ('sent', 'follow_up', 'reply')
+        ORDER BY ic.sent_at DESC
+    """, (user_id, sender_email))
+
+    candidates = cursor.fetchall()
+    if not candidates:
+        return None
+
+    for row in candidates:
+        candidate_subject = re.sub(r"^(re|fw|fwd):\s*", "", row[3] or "", flags=re.IGNORECASE).strip().lower()
+        invoice_number = (row[4] or "").lower()
+        if subject_normalized and (subject_normalized in candidate_subject or candidate_subject in subject_normalized):
+            return row
+        if invoice_number_token and invoice_number and invoice_number_token in invoice_number:
+            return row
+
+    return candidates[0]
+
+def record_inbound_reply(cursor, user_id, message_id, sender_email, subject, body, received_at):
+    message_id = str(message_id or "")[:300]
+    match = find_matching_communication(cursor, user_id, sender_email, subject)
+    if not match:
+        cursor.execute("""
+            INSERT INTO email_sync_log (user_id, message_id, sender_email, subject, received_at)
+            VALUES (?, ?, ?, ?, ?)
+        """, (user_id, message_id, sender_email, subject, received_at))
+        return False
+
+    communication_id, invoice_id, customer_id = match[0], match[1], match[2]
+    cursor.execute("""
+        UPDATE invoice_communications
+        SET customer_replied = 1,
+            reply_at = COALESCE(reply_at, ?),
+            reply_body = CASE
+                WHEN reply_body IS NULL OR LTRIM(RTRIM(reply_body)) = '' THEN ?
+                ELSE reply_body
+            END
+        WHERE id = ?
+    """, (received_at, body, communication_id))
+
+    cursor.execute("""
+        INSERT INTO invoice_communications
+        (invoice_id, customer_id, communication_type, subject, message_body, sent_at, created_by)
+        VALUES (?, ?, 'customer_reply', ?, ?, ?, ?)
+    """, (invoice_id, customer_id, subject, body, received_at, user_id))
+
+    cursor.execute("""
+        UPDATE invoice_follow_ups
+        SET customer_responded = 1,
+            responded_at = COALESCE(responded_at, ?)
+        WHERE invoice_id = ?
+    """, (received_at, invoice_id))
+
+    cursor.execute("""
+        INSERT INTO email_sync_log
+        (user_id, message_id, invoice_id, communication_id, sender_email, subject, received_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (user_id, message_id, invoice_id, communication_id, sender_email, subject, received_at))
+    return True
+
+def sync_inbox_for_user(user_id, days_back=14, limit=50):
+    if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
+        raise Exception("Email settings are missing. Configure EMAIL_ADDRESS and EMAIL_PASSWORD in Flask/.env.")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    matched = 0
+    processed = 0
+    skipped = 0
+
+    mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
+    try:
+        mail.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+        mail.select("INBOX")
+        since_date = (datetime.now() - timedelta(days=days_back)).strftime("%d-%b-%Y")
+        status, data = mail.search(None, "SINCE", since_date)
+        if status != "OK":
+            raise Exception("Unable to search inbox")
+
+        message_ids = data[0].split()[-limit:]
+        for imap_id in message_ids:
+            status, msg_data = mail.fetch(imap_id, "(RFC822)")
+            if status != "OK" or not msg_data:
+                skipped += 1
+                continue
+
+            raw_message = msg_data[0][1]
+            message = message_from_bytes(raw_message)
+            message_id = (message.get("Message-ID") or f"imap-{imap_id.decode()}").strip()[:300]
+            sender_name, sender_email = parseaddr(message.get("From") or "")
+            sender_email = sender_email.lower()
+            if sender_email == (EMAIL_ADDRESS or "").lower():
+                skipped += 1
+                continue
+            if message_already_processed(cursor, user_id, message_id):
+                skipped += 1
+                continue
+
+            subject = decode_mime_header(message.get("Subject"))
+            try:
+                parsed_date = parsedate_to_datetime(message.get("Date"))
+                received_at = parsed_date.replace(tzinfo=None) if parsed_date else datetime.now()
+            except Exception:
+                received_at = datetime.now()
+
+            body = clean_inbound_reply_body(get_email_text_body(message))
+            if not body:
+                skipped += 1
+                continue
+
+            processed += 1
+            if record_inbound_reply(cursor, user_id, message_id, sender_email, subject, body, received_at):
+                matched += 1
+
+        conn.commit()
+        return {"processed": processed, "matched": matched, "skipped": skipped}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        try:
+            mail.logout()
+        except Exception:
+            pass
+        conn.close()
+
 # ============================================
 # RUN THE APP
 # ============================================
@@ -6269,5 +5886,6 @@ if __name__ == '__main__':
     if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
         task_manager = InvoiceTaskManager(app)
         task_manager.start()
+        start_recurring_template_scheduler()
     
     app.run(debug=True, host='0.0.0.0', port=5000)

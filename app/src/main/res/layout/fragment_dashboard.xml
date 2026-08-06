@@ -97,6 +97,56 @@
                 </LinearLayout>
             </androidx.cardview.widget.CardView>
 
+            <!-- Paid Last 30 Days -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/cardPaidLast30Days"
+                android:layout_width="0dp"
+                android:layout_height="120dp"
+                android:layout_columnWeight="1"
+                android:layout_margin="4dp"
+                android:clickable="true"
+                android:focusable="true"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="2dp">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:orientation="vertical"
+                    android:padding="12dp"
+                    android:gravity="center_vertical">
+                    <ImageView
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:src="@drawable/ic_dashboard"
+                        app:tint="?attr/colorPrimary"
+                        android:layout_marginBottom="8dp"/>
+                    <TextView
+                        android:id="@+id/tvStatLabelPaidRecent"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Paid Last 30 Days"
+                        android:textSize="11sp"
+                        android:textColor="?attr/colorTextSecondary"/>
+                    <TextView
+                        android:id="@+id/tvStatValuePaidRecent"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="$0.00"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        android:textColor="?attr/colorOnSurface"
+                        android:layout_marginTop="4dp"/>
+                    <TextView
+                        android:id="@+id/tvStatSubtextPaidRecent"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0 invoice(s)"
+                        android:textSize="10sp"
+                        android:textColor="?attr/colorTextSecondary"
+                        android:layout_marginTop="2dp"/>
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
             <!-- Pending -->
             <androidx.cardview.widget.CardView
                 android:id="@+id/cardPendingInvoices"

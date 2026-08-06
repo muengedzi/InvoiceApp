@@ -6,14 +6,12 @@ import android.view.Menu
 import android.view.MenuItem
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.invoiceapp.R
 import com.invoiceapp.databinding.ActivityMainBinding
 import com.invoiceapp.fragments.*
 import com.invoiceapp.utils.SessionManager
-import com.invoiceapp.utils.ThemeManager
 
 class MainActivity : BaseActivity() {
     private lateinit var binding: ActivityMainBinding

@@ -2,7 +2,6 @@ package com.invoiceapp.activities
 
 import android.os.Bundle
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
 import com.invoiceapp.R
 import com.invoiceapp.databinding.ActivityThemeSettingsBinding
 import com.invoiceapp.utils.ThemeManager
