@@ -1,6 +1,7 @@
 package com.invoiceapp.fragments
 
 import android.app.DatePickerDialog
+import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -8,6 +9,7 @@ import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Toast
+import androidx.core.content.FileProvider
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -27,6 +29,7 @@ import com.invoiceapp.databinding.FragmentReportsBinding
 import com.invoiceapp.network.RetrofitClient
 import com.invoiceapp.utils.SessionManager
 import kotlinx.coroutines.launch
+import java.io.File
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.*
@@ -45,6 +48,12 @@ class ReportsFragment : Fragment() {
     private val currencyFormat = NumberFormat.getCurrencyInstance(Locale("en", "ZA")).apply {
         currency = java.util.Currency.getInstance("ZAR")
     }
+
+    // State for exporting report
+    private var currentReportType: Int = -1
+    private var currentReportData: Map<String, Any>? = null
+    private var currentStartDateStr: String = ""
+    private var currentEndDateStr: String = ""
 
     companion object {
         private const val REPORT_SALES = 0
@@ -265,6 +274,10 @@ class ReportsFragment : Fragment() {
 
                 if (response.isSuccessful && response.body() != null) {
                     val data = response.body()!!
+                    currentReportType = reportType
+                    currentReportData = data
+                    currentStartDateStr = startDateStr
+                    currentEndDateStr = endDateStr
                     displayReport(reportType, data, startDateStr, endDateStr)
                     binding.btnExport.visibility = View.VISIBLE
                 } else {
@@ -280,6 +293,10 @@ class ReportsFragment : Fragment() {
 
     private fun showError(message: String) {
         showLoading(false)
+        currentReportType = -1
+        currentReportData = null
+        currentStartDateStr = ""
+        currentEndDateStr = ""
         binding.tvError.text = message
         binding.tvError.visibility = View.VISIBLE
         binding.cardReportContent.visibility = View.GONE
@@ -745,7 +762,391 @@ class ReportsFragment : Fragment() {
     }
 
     private fun exportReport() {
-        Toast.makeText(requireContext(), "Export feature coming soon", Toast.LENGTH_SHORT).show()
+        val data = currentReportData
+        if (data == null) {
+            Toast.makeText(requireContext(), "No report data available to export", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val reportType = currentReportType
+        val startDate = currentStartDateStr
+        val endDate = currentEndDateStr
+
+        val (reportNameSlug, reportTitle, csvContent) = when (reportType) {
+            REPORT_SALES -> Triple("sales", "Sales / Invoice Summary Report", buildSalesReportCsv(data, startDate, endDate))
+            REPORT_EXPENSES -> Triple("expenses", "Expense Report", buildExpenseReportCsv(data, startDate, endDate))
+            REPORT_PROFIT_LOSS -> Triple("profit_loss", "Profit & Loss Report", buildProfitLossReportCsv(data, startDate, endDate))
+            REPORT_TAX -> Triple("tax", "Tax Report", buildTaxReportCsv(data, startDate, endDate))
+            REPORT_OUTSTANDING -> Triple("outstanding", "Outstanding Receivables Report", buildOutstandingReportCsv(data, startDate, endDate))
+            REPORT_INVOICE_STATUS -> Triple("invoice_status", "Invoice Status Report", buildInvoiceStatusReportCsv(data, startDate, endDate))
+            REPORT_ITEM_SALES -> Triple("item_sales", "Item / Service Sales Report", buildItemSalesReportCsv(data, startDate, endDate))
+            REPORT_CUSTOMER -> Triple("customer", "Customer Report", buildCustomerReportCsv(data, startDate, endDate))
+            else -> {
+                Toast.makeText(requireContext(), "Invalid report type", Toast.LENGTH_SHORT).show()
+                return
+            }
+        }
+
+        try {
+            val fileName = "report_${reportNameSlug}_${startDate}_to_${endDate}.csv"
+            val reportsDir = File(requireContext().cacheDir, "exported_reports").apply { mkdirs() }
+            val csvFile = File(reportsDir, fileName)
+            csvFile.writeText(csvContent, Charsets.UTF_8)
+
+            val uri = FileProvider.getUriForFile(
+                requireContext(),
+                "${requireContext().packageName}.fileprovider",
+                csvFile
+            )
+
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/csv"
+                putExtra(Intent.EXTRA_SUBJECT, "$reportTitle ($startDate to $endDate)")
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+
+            val chooser = Intent.createChooser(shareIntent, "Export $reportTitle CSV")
+            startActivity(chooser)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(requireContext(), "Error exporting CSV: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun escapeCsv(value: Any?): String {
+        if (value == null) return ""
+        val str = value.toString()
+        return if (str.contains(",") || str.contains("\"") || str.contains("\n") || str.contains("\r")) {
+            "\"${str.replace("\"", "\"\"")}\""
+        } else {
+            str
+        }
+    }
+
+    private fun formatNumber(number: Any?): String {
+        val doubleVal = (number as? Number)?.toDouble() ?: 0.0
+        return String.format(Locale.US, "%.2f", doubleVal)
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun buildSalesReportCsv(data: Map<String, Any>, startDate: String, endDate: String): String {
+        val sb = StringBuilder()
+        sb.append("Report Name,").append(escapeCsv("Sales / Invoice Summary Report")).append("\n")
+        sb.append("Period,").append(escapeCsv("$startDate to $endDate")).append("\n\n")
+
+        val summary = data["summary"] as? Map<String, Any>
+        summary?.let {
+            sb.append("SUMMARY\n")
+            sb.append("Total Revenue (ZAR),").append(formatNumber(it["total_revenue"])).append("\n")
+            sb.append("Total Tax (ZAR),").append(formatNumber(it["total_tax"])).append("\n")
+            sb.append("Total Invoices,").append(it["total_invoices"] ?: 0).append("\n\n")
+        }
+
+        val revenueWindows = data["revenue_windows"] as? Map<String, Any>
+        revenueWindows?.let {
+            sb.append("REVENUE WINDOWS\n")
+            sb.append("Period,Amount (ZAR)\n")
+            sb.append("Last 30 Days,").append(formatNumber(it["last_30_days"])).append("\n")
+            sb.append("Last Quarter,").append(formatNumber(it["last_quarter"])).append("\n")
+            sb.append("Last 6 Months,").append(formatNumber(it["last_six_months"])).append("\n")
+            sb.append("Last Year,").append(formatNumber(it["last_year"])).append("\n\n")
+        }
+
+        val monthlyActivity = data["monthly_activity"] as? List<Map<String, Any>> ?: emptyList()
+        if (monthlyActivity.isNotEmpty()) {
+            sb.append("MONTHLY ACTIVITY\n")
+            sb.append("Period,Invoices Created,Paid Invoices,Pending Invoices,Overdue Invoices,Revenue (ZAR),Tax Liability (ZAR)\n")
+            for (row in monthlyActivity) {
+                sb.append(escapeCsv(row["period"] ?: formatMonthLabel(row))).append(",")
+                    .append(row["invoices_created"] ?: 0).append(",")
+                    .append(row["paid"] ?: 0).append(",")
+                    .append(row["pending"] ?: 0).append(",")
+                    .append(row["overdue"] ?: 0).append(",")
+                    .append(formatNumber(row["revenue"])).append(",")
+                    .append(formatNumber(row["tax_liability"])).append("\n")
+            }
+            sb.append("\n")
+        }
+
+        val dataList = data["data"] as? List<Map<String, Any>> ?: emptyList()
+        if (dataList.isNotEmpty()) {
+            sb.append("PERIOD SALES BREAKDOWN\n")
+            sb.append("Period,Invoice Count,Total Amount (ZAR),Total Tax (ZAR),Total Discount (ZAR),Total Shipping (ZAR)\n")
+            for (row in dataList) {
+                sb.append(escapeCsv(row["period"])).append(",")
+                    .append(row["invoice_count"] ?: 0).append(",")
+                    .append(formatNumber(row["total_amount"])).append(",")
+                    .append(formatNumber(row["total_tax"])).append(",")
+                    .append(formatNumber(row["total_discount"])).append(",")
+                    .append(formatNumber(row["total_shipping"])).append("\n")
+            }
+        }
+
+        return sb.toString()
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun buildExpenseReportCsv(data: Map<String, Any>, startDate: String, endDate: String): String {
+        val sb = StringBuilder()
+        sb.append("Report Name,").append(escapeCsv("Expense Report")).append("\n")
+        sb.append("Period,").append(escapeCsv("$startDate to $endDate")).append("\n\n")
+
+        val summary = data["summary"] as? Map<String, Any>
+        summary?.let {
+            sb.append("SUMMARY\n")
+            sb.append("Total Expenses (ZAR),").append(formatNumber(it["total_expenses"])).append("\n")
+            sb.append("Expense Count,").append(it["expense_count"] ?: 0).append("\n")
+            sb.append("Average Expense (ZAR),").append(formatNumber(it["average_expense"])).append("\n\n")
+        }
+
+        val byCategory = data["expenses_by_category"] as? List<Map<String, Any>> ?: emptyList()
+        if (byCategory.isNotEmpty()) {
+            sb.append("EXPENSES BY CATEGORY\n")
+            sb.append("Category,Amount (ZAR),Expense Count\n")
+            for (row in byCategory) {
+                sb.append(escapeCsv(row["category"] ?: "Uncategorized")).append(",")
+                    .append(formatNumber(row["amount"])).append(",")
+                    .append(row["count"] ?: 0).append("\n")
+            }
+            sb.append("\n")
+        }
+
+        val byVendor = data["expenses_by_vendor"] as? List<Map<String, Any>> ?: emptyList()
+        if (byVendor.isNotEmpty()) {
+            sb.append("EXPENSES BY VENDOR\n")
+            sb.append("Vendor Name,Amount (ZAR),Expense Count\n")
+            for (row in byVendor) {
+                sb.append(escapeCsv(row["vendor_name"] ?: "No vendor")).append(",")
+                    .append(formatNumber(row["amount"])).append(",")
+                    .append(row["count"] ?: 0).append("\n")
+            }
+            sb.append("\n")
+        }
+
+        val byMonth = data["expenses_by_month"] as? List<Map<String, Any>> ?: emptyList()
+        if (byMonth.isNotEmpty()) {
+            sb.append("EXPENSES BY MONTH\n")
+            sb.append("Year,Month,Amount (ZAR),Expense Count\n")
+            for (row in byMonth) {
+                sb.append(row["year"] ?: "").append(",")
+                    .append(row["month"] ?: "").append(",")
+                    .append(formatNumber(row["amount"])).append(",")
+                    .append(row["count"] ?: 0).append("\n")
+            }
+        }
+
+        return sb.toString()
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun buildProfitLossReportCsv(data: Map<String, Any>, startDate: String, endDate: String): String {
+        val sb = StringBuilder()
+        sb.append("Report Name,").append(escapeCsv("Profit & Loss Report")).append("\n")
+        sb.append("Period,").append(escapeCsv("$startDate to $endDate")).append("\n\n")
+
+        sb.append("SUMMARY\n")
+        sb.append("Total Revenue (ZAR),").append(formatNumber(data["total_revenue"])).append("\n")
+        sb.append("Total Expenses (ZAR),").append(formatNumber(data["total_expenses"])).append("\n")
+        sb.append("Net Profit (ZAR),").append(formatNumber(data["net_profit"])).append("\n\n")
+
+        val revenueByMonth = data["revenue_by_month"] as? List<Map<String, Any>> ?: emptyList()
+        if (revenueByMonth.isNotEmpty()) {
+            sb.append("REVENUE BY MONTH\n")
+            sb.append("Year,Month,Revenue (ZAR)\n")
+            for (row in revenueByMonth) {
+                sb.append(row["year"] ?: "").append(",")
+                    .append(row["month"] ?: "").append(",")
+                    .append(formatNumber(row["revenue"])).append("\n")
+            }
+            sb.append("\n")
+        }
+
+        val expensesByCategory = data["expenses_by_category"] as? List<Map<String, Any>> ?: emptyList()
+        if (expensesByCategory.isNotEmpty()) {
+            sb.append("EXPENSES BY CATEGORY\n")
+            sb.append("Category,Amount (ZAR)\n")
+            for (row in expensesByCategory) {
+                sb.append(escapeCsv(row["category"] ?: "Uncategorized")).append(",")
+                    .append(formatNumber(row["amount"])).append("\n")
+            }
+            sb.append("\n")
+        }
+
+        val invoiceCountsByMonth = data["invoice_counts_by_month"] as? List<Map<String, Any>> ?: emptyList()
+        if (invoiceCountsByMonth.isNotEmpty()) {
+            sb.append("INVOICE COUNTS BY MONTH\n")
+            sb.append("Year,Month,Paid,Pending,Quotation,Draft,Overdue,Total\n")
+            for (row in invoiceCountsByMonth) {
+                sb.append(row["year"] ?: "").append(",")
+                    .append(row["month"] ?: "").append(",")
+                    .append(row["paid"] ?: 0).append(",")
+                    .append(row["pending"] ?: 0).append(",")
+                    .append(row["quotation"] ?: 0).append(",")
+                    .append(row["draft"] ?: 0).append(",")
+                    .append(row["overdue"] ?: 0).append(",")
+                    .append(row["total"] ?: 0).append("\n")
+            }
+        }
+
+        return sb.toString()
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun buildTaxReportCsv(data: Map<String, Any>, startDate: String, endDate: String): String {
+        val sb = StringBuilder()
+        sb.append("Report Name,").append(escapeCsv("Tax Report")).append("\n")
+        sb.append("Period,").append(escapeCsv("$startDate to $endDate")).append("\n\n")
+
+        val summary = data["summary"] as? Map<String, Any>
+        summary?.let {
+            sb.append("SUMMARY\n")
+            sb.append("Total Tax Collected (ZAR),").append(formatNumber(it["total_tax_collected"])).append("\n")
+            sb.append("Total Tax Invoices,").append(it["total_tax_invoices"] ?: 0).append("\n\n")
+        }
+
+        val taxRates = data["tax_rates"] as? List<Map<String, Any>> ?: emptyList()
+        if (taxRates.isNotEmpty()) {
+            sb.append("TAX BREAKDOWN BY RATE\n")
+            sb.append("Tax Rate (%),Invoice Count,Taxable Amount (ZAR),Tax Collected (ZAR)\n")
+            for (row in taxRates) {
+                sb.append(formatNumber(row["tax_rate"])).append(",")
+                    .append(row["invoice_count"] ?: 0).append(",")
+                    .append(formatNumber(row["taxable_amount"])).append(",")
+                    .append(formatNumber(row["tax_collected"] ?: row["tax_liability"])).append("\n")
+            }
+            sb.append("\n")
+        }
+
+        val taxByMonth = data["tax_by_month"] as? List<Map<String, Any>> ?: emptyList()
+        if (taxByMonth.isNotEmpty()) {
+            sb.append("TAX BREAKDOWN BY MONTH\n")
+            sb.append("Period,Invoice Count,Taxable Amount (ZAR),Tax Liability (ZAR)\n")
+            for (row in taxByMonth) {
+                sb.append(escapeCsv(row["period"] ?: "${row["year"]}-${row["month"]}")).append(",")
+                    .append(row["invoice_count"] ?: 0).append(",")
+                    .append(formatNumber(row["taxable_amount"])).append(",")
+                    .append(formatNumber(row["tax_liability"] ?: row["tax_collected"])).append("\n")
+            }
+        }
+
+        return sb.toString()
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun buildOutstandingReportCsv(data: Map<String, Any>, startDate: String, endDate: String): String {
+        val sb = StringBuilder()
+        sb.append("Report Name,").append(escapeCsv("Outstanding Receivables Report")).append("\n")
+        sb.append("As of Date,").append(escapeCsv(endDate)).append("\n\n")
+
+        sb.append("SUMMARY\n")
+        sb.append("Total Outstanding (ZAR),").append(formatNumber(data["total_outstanding"])).append("\n\n")
+
+        val outstandingInvoices = data["outstanding_invoices"] as? List<Map<String, Any>> ?: emptyList()
+        sb.append("OUTSTANDING INVOICES\n")
+        sb.append("Invoice Number,Customer Name,Customer Email,Customer Phone,Invoice Date,Due Date,Total Amount (ZAR),Amount Paid (ZAR),Balance Due (ZAR),Days Overdue\n")
+        for (row in outstandingInvoices) {
+            sb.append(escapeCsv(row["invoice_number"])).append(",")
+                .append(escapeCsv(row["customer_name"])).append(",")
+                .append(escapeCsv(row["customer_email"])).append(",")
+                .append(escapeCsv(row["customer_phone"])).append(",")
+                .append(escapeCsv(row["invoice_date"])).append(",")
+                .append(escapeCsv(row["due_date"])).append(",")
+                .append(formatNumber(row["total_amount"])).append(",")
+                .append(formatNumber(row["amount_paid"])).append(",")
+                .append(formatNumber(row["balance_due"])).append(",")
+                .append(row["days_overdue"] ?: 0).append("\n")
+        }
+
+        return sb.toString()
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun buildInvoiceStatusReportCsv(data: Map<String, Any>, startDate: String, endDate: String): String {
+        val sb = StringBuilder()
+        sb.append("Report Name,").append(escapeCsv("Invoice Status Report")).append("\n")
+        sb.append("Period,").append(escapeCsv("$startDate to $endDate")).append("\n\n")
+
+        val totalInvoices = data["total_invoices"]
+        if (totalInvoices != null) {
+            sb.append("SUMMARY\n")
+            sb.append("Total Invoices,").append(totalInvoices).append("\n\n")
+        }
+
+        val statusBreakdown = data["status_breakdown"] as? List<Map<String, Any>> ?: emptyList()
+        if (statusBreakdown.isNotEmpty()) {
+            sb.append("STATUS BREAKDOWN\n")
+            sb.append("Status,Count,Total Amount (ZAR)\n")
+            for (row in statusBreakdown) {
+                sb.append(escapeCsv(row["status"])).append(",")
+                    .append(row["count"] ?: 0).append(",")
+                    .append(formatNumber(row["total_amount"])).append("\n")
+            }
+            sb.append("\n")
+        }
+
+        val monthlyStatus = data["monthly_status"] as? List<Map<String, Any>> ?: emptyList()
+        if (monthlyStatus.isNotEmpty()) {
+            sb.append("MONTHLY STATUS BREAKDOWN\n")
+            sb.append("Period,Invoices Created,Paid,Pending,Overdue,Revenue (ZAR),Tax Liability (ZAR)\n")
+            for (row in monthlyStatus) {
+                sb.append(escapeCsv(row["period"] ?: "${row["year"]}-${row["month"]}")).append(",")
+                    .append(row["invoices_created"] ?: 0).append(",")
+                    .append(row["paid"] ?: 0).append(",")
+                    .append(row["pending"] ?: 0).append(",")
+                    .append(row["overdue"] ?: 0).append(",")
+                    .append(formatNumber(row["revenue"])).append(",")
+                    .append(formatNumber(row["tax_liability"])).append("\n")
+            }
+        }
+
+        return sb.toString()
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun buildItemSalesReportCsv(data: Map<String, Any>, startDate: String, endDate: String): String {
+        val sb = StringBuilder()
+        sb.append("Report Name,").append(escapeCsv("Item / Service Sales Report")).append("\n")
+        sb.append("Period,").append(escapeCsv("$startDate to $endDate")).append("\n\n")
+
+        val totalItems = data["total_items_sold"]
+        if (totalItems != null) {
+            sb.append("SUMMARY\n")
+            sb.append("Total Items Sold,").append(formatNumber(totalItems)).append("\n\n")
+        }
+
+        val items = data["items"] as? List<Map<String, Any>> ?: emptyList()
+        sb.append("ITEM SALES DETAILS\n")
+        sb.append("Item / Service Name,Quantity Sold,Invoice Count,Total Sales (ZAR)\n")
+        for (row in items) {
+            sb.append(escapeCsv(row["item_name"])).append(",")
+                .append(formatNumber(row["quantity_sold"])).append(",")
+                .append(row["invoice_count"] ?: 0).append(",")
+                .append(formatNumber(row["total_sales"])).append("\n")
+        }
+
+        return sb.toString()
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun buildCustomerReportCsv(data: Map<String, Any>, startDate: String, endDate: String): String {
+        val sb = StringBuilder()
+        sb.append("Report Name,").append(escapeCsv("Customer Report")).append("\n")
+        sb.append("Period,").append(escapeCsv("$startDate to $endDate")).append("\n\n")
+
+        val customers = data["customers"] as? List<Map<String, Any>> ?: emptyList()
+        sb.append("CUSTOMER SUMMARY\n")
+        sb.append("Customer Name,Email,Phone,Invoice Count,Total Spent (ZAR),Outstanding Balance (ZAR)\n")
+        for (row in customers) {
+            sb.append(escapeCsv(row["customer_name"])).append(",")
+                .append(escapeCsv(row["email"])).append(",")
+                .append(escapeCsv(row["phone"])).append(",")
+                .append(row["invoice_count"] ?: 0).append(",")
+                .append(formatNumber(row["total_spent"])).append(",")
+                .append(formatNumber(row["outstanding_balance"])).append("\n")
+        }
+
+        return sb.toString()
     }
 
     override fun onDestroyView() {
